@@ -16,7 +16,10 @@
           <pre v-if="seg.type === 'code'" class="code-block"><code>{{ seg.content }}</code></pre>
           <p v-else class="text-block">{{ seg.content }}</p>
         </div>
-        <span v-if="streaming" class="cursor-blink">▍</span>
+        <span v-if="streaming && message.content" class="cursor-blink">▍</span>
+        <span v-else-if="streaming" class="thinking">
+          <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+        </span>
       </div>
       <div v-if="message.role === 'assistant' && message.elapsed" class="elapsed">⚡ {{ message.elapsed }}s</div>
       <Transition name="fade">
@@ -157,6 +160,29 @@ const segments = computed(() => {
 .cursor-blink {
   animation: blink 0.8s step-end infinite;
   color: #4a9eff;
+}
+
+.thinking {
+  color: #888;
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+
+.dot {
+  animation: dotPulse 1.4s infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
 }
 
 .image-gallery {

@@ -8,7 +8,7 @@
     </div>
 
     <template v-else>
-      <div class="messages" ref="messagesRef" @scroll="onScroll">
+      <div class="messages" ref="messagesRef">
         <MessageBubble
           v-for="msg in activeSession.messages"
           :key="msg.id"
@@ -88,7 +88,6 @@ const isStreaming = ref(false)
 const currentReply = ref(null)
 const pendingImage = ref(null)
 let abortController = null
-let isAutoScroll = true
 
 const activeSession = store.activeSession
 
@@ -101,20 +100,13 @@ function autoResize(e) {
 function scrollToBottom(smooth = true) {
   nextTick(() => {
     const el = messagesRef.value
-    if (el && isAutoScroll) {
+    if (el) {
       el.scrollTo({
         top: el.scrollHeight,
         behavior: smooth ? 'smooth' : 'auto'
       })
     }
   })
-}
-
-function onScroll() {
-  const el = messagesRef.value
-  if (!el) return
-  const threshold = 50
-  isAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
 }
 
 async function pickImage() {
@@ -176,11 +168,16 @@ async function send() {
   store.addMessage(session.id, msgData)
   pendingImage.value = null
 
-  const messages = session.messages.map(m => ({
-    role: m.role,
-    content: m.content,
-    images: m.images
-  }))
+  // 仅最新用户消息保留 images 字段，避免历史图片污染后续请求
+  const lastUserIdx = [...session.messages].reverse().findIndex(m => m.role === 'user')
+  const keepImagesIdx = lastUserIdx === -1 ? -1 : session.messages.length - 1 - lastUserIdx
+  const messages = session.messages.map((m, i) => {
+    const msg = { role: m.role, content: m.content }
+    if (i === keepImagesIdx && m.images?.length) {
+      msg.images = m.images
+    }
+    return msg
+  })
 
   const replyId = Date.now().toString(36) + '-assistant'
   const replyMsg = {
@@ -201,7 +198,7 @@ async function send() {
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
       model: config.model,
-      messages: messages.concat([{ role: 'user', content: text }]),
+      messages: messages,
       signal: abortController.signal,
       onToken: (delta, fullContent) => {
         requestAnimationFrame(() => {
@@ -238,7 +235,7 @@ async function send() {
           apiUrl: config.apiUrl,
           apiKey: config.apiKey,
           model: config.model,
-          messages: messages.concat([{ role: 'user', content: text }]),
+          messages: messages,
           signal: abortController.signal,
           onToken: null
         })
