@@ -1,0 +1,116 @@
+name: Cross-Platform Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 触发条件：推送版本标签，如 v1.0.0
+
+permissions:
+  contents: write # 必须权限：用于创建 Release 和上传资产
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # 一个平台失败不影响其他平台继续构建
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: linux-x86_64
+          # Linux ARM64 (需交叉编译或专用 runner，此处演示交叉编译)
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: linux-arm64
+          # macOS x86_64 (Intel)
+          - os: macos-10 # macos-13 是 Intel 芯片
+            target: x86_64-apple-darwin
+            artifact_name: macos-intel
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-latest # macos-latest 默认是 M1/M2
+            target: aarch64-apple-darwin
+            artifact_name: macos-arm
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: windows-x86_64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Linux ARM64 需要安装交叉编译工具链
+      - name: Install Linux ARM64 Cross Compiler
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          # 配置 Cargo 使用该链接器
+          mkdir -p .cargo
+          echo '[target.aarch64-unknown-linux-gnu]' >> .cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> .cargo/config.toml
+
+      - name: Build Release Binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare Artifact
+        shell: bash
+        run: |
+          # 创建输出目录
+          mkdir -p output
+          
+          # 根据操作系统确定二进制文件名和后缀
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BIN_NAME="github-ai-app.exe"
+          else
+            BIN_NAME="github-ai-app"
+          fi
+          
+          # 复制二进制文件并重命名
+          cp target/${{ matrix.target }}/release/$BIN_NAME output/github-ai-app-${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.artifact_name }}
+          path: output/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Generate Checksums
+        run: sha256sum * > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automated release for ${{ github.ref_name }}.
+            
+            ## Assets
+            - Linux (x86_64, ARM64)
+            - macOS (Intel, Apple Silicon)
+            - Windows (x86_64)
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
