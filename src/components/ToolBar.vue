@@ -58,7 +58,7 @@ const currentProfileId = computed(() => {
 })
 
 const currentModel = computed(() => {
-  return store.activeProfile.value?.model || ''
+  return store.activeProfile.value?.model || '没有选中模型'
 })
 
 function toggleDropdown() {

@@ -178,7 +178,8 @@ async function send() {
 
   const messages = session.messages.map(m => ({
     role: m.role,
-    content: m.content
+    content: m.content,
+    images: m.images
   }))
 
   const replyId = Date.now().toString(36) + '-assistant'

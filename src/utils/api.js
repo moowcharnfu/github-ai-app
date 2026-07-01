@@ -1,5 +1,10 @@
 export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal, onToken }) {
   const useStream = !!onToken
+  const hasImages = messages.some(m => m.images && m.images.length > 0)
+
+  if (isSensenovaUrl(apiUrl) && hasImages) {
+    return sendSensenovaImageRequest(apiUrl, apiKey, model, messages, signal)
+  }
 
   const body = {
     model,
@@ -19,6 +24,62 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     return sendStreamingRequest(apiUrl, headers, body, signal, onToken)
   } else {
     return sendRegularRequest(apiUrl, headers, body, signal)
+  }
+}
+
+// ── Sensenova image request ──
+
+function isSensenovaUrl(apiUrl) {
+  return apiUrl && apiUrl.toLowerCase().includes('sensenova')
+}
+
+async function sendSensenovaImageRequest(apiUrl, apiKey, model, messages, signal) {
+  // Find the last user message that has images
+  const lastImageMsg = [...messages].reverse().find(m => m.images && m.images.length > 0)
+  const prompt = lastImageMsg?.content || ''
+  const imageData = lastImageMsg?.images?.[0]?.data || ''
+
+  const body = {
+    image: imageData,
+    prompt,
+    model
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal
+  })
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '')
+    throw new Error(`API error ${response.status}: ${errText || response.statusText}`)
+  }
+
+  const text = await response.text()
+  return parseSensenovaResponse(text)
+}
+
+function parseSensenovaResponse(text) {
+  if (!text) return ''
+  try {
+    const json = JSON.parse(text)
+    // Sensenova native format: { response: "..." }
+    if (json.response && typeof json.response === 'string') return json.response
+    // OpenAI compatible format
+    if (json.choices?.[0]?.message?.content) return json.choices[0].message.content
+    // Fallback: stringify the whole response
+    console.warn('Unknown Sensenova response format:', json)
+    return JSON.stringify(json)
+  } catch {
+    // Not JSON: return raw text
+    return text
   }
 }
 
