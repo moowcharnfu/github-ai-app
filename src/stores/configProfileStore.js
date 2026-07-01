@@ -1,4 +1,4 @@
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref } from 'vue'
 import { getItem, setItem } from '../utils/storage.js'
 
 const DEFAULT_API_URL = 'https://models.github.ai/inference/chat/completions'
@@ -48,10 +48,10 @@ function loadProfiles() {
 
 const profiles = reactive(loadProfiles())
 
-let activeId = getItem('active-profile-id')
-if (!activeId || !profiles.find(p => p.id === activeId)) {
-  activeId = profiles.length > 0 ? profiles[0].id : null
-  if (activeId) setItem('active-profile-id', activeId)
+const activeId = ref(getItem('active-profile-id'))
+if (!activeId.value || !profiles.find(p => p.id === activeId.value)) {
+  activeId.value = profiles.length > 0 ? profiles[0].id : null
+  if (activeId.value) setItem('active-profile-id', activeId.value)
 }
 
 function persist() {
@@ -60,7 +60,7 @@ function persist() {
 
 export function useProfileStore() {
   const activeProfile = computed(() => {
-    return profiles.find(p => p.id === activeId) || null
+    return profiles.find(p => p.id === activeId.value) || null
   })
 
   function createProfile(name, apiUrl, apiKey, model) {
@@ -88,23 +88,23 @@ export function useProfileStore() {
     const idx = profiles.findIndex(p => p.id === id)
     if (idx === -1) return
     profiles.splice(idx, 1)
-    if (activeId === id) {
-      activeId = profiles[0].id
-      setItem('active-profile-id', activeId)
+    if (activeId.value === id) {
+      activeId.value = profiles[0].id
+      setItem('active-profile-id', activeId.value)
     }
     persist()
   }
 
   function switchProfile(id) {
     if (profiles.find(p => p.id === id)) {
-      activeId = id
+      activeId.value = id
       setItem('active-profile-id', id)
     }
   }
 
   return {
     profiles,
-    activeProfileId: () => activeId,
+    activeProfileId: () => activeId.value,
     activeProfile,
     createProfile,
     updateProfile,
