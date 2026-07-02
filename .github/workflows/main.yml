@@ -25,7 +25,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact_name: linux-arm64
           # macOS x86_64 (Intel)
-          - os: macos-10 # macos-13 是 Intel 芯片
+          - os: macos-13 # macos-13 是 Intel 芯片
             target: x86_64-apple-darwin
             artifact_name: macos-intel
           # macOS ARM64 (Apple Silicon)
@@ -51,7 +51,7 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libglib2.0-dev
           # 配置 Cargo 使用该链接器
           mkdir -p .cargo
           echo '[target.aarch64-unknown-linux-gnu]' >> .cargo/config.toml
