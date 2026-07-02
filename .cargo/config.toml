@@ -1,6 +1,0 @@
-# .cargo/config.toml
-[target.x86_64-apple-darwin]
-rustflags = ["-C", "link-args=-mmacosx-version-min=10.15"]
-
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-args=-mmacosx-version-min=11.0"] # ARM Mac 最低支持 macOS 11
