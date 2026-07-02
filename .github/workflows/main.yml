@@ -1,4 +1,4 @@
-name: Cross-Platform Build and Release
+name: Build
 
 on:
   push:
@@ -10,93 +10,77 @@ permissions:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }} (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # 一个平台失败不影响其他平台继续构建
       matrix:
         include:
-          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: linux-x86_64
-          # Linux ARM64 (需交叉编译或专用 runner，此处演示交叉编译)
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact_name: linux-arm64
-          # macOS x86_64 (Intel)
-          - os: macos-13 # macos-13 是 Intel 芯片
+            bundle: linux
+          - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: macos-intel
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-latest # macos-latest 默认是 M1/M2
+            bundle: macos
+          - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: macos-arm
-          # Windows x86_64
+            bundle: macos-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: windows-x86_64
+            bundle: windows
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      # Linux ARM64 需要安装交叉编译工具链
-      - name: Install Linux ARM64 Cross Compiler
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install Linux system deps
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          
-          # 安装 ARM64 交叉编译工具链
           sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-          
-          # 安装 ARM64 架构的 GLib 开发库（关键！）
-          sudo apt-get install -y \
-            libglib2.0-dev:arm64 \
-            libgtk-3-dev:arm64 \
-            libsoup2.4-dev:arm64 \
-            libwebkit2gtk-4.0-dev:arm64          
-          # glib-sys 缺失修复
-          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libsoup2.4-dev libwebkit2gtk-4.0-dev
-          
-          # 配置 Cargo 使用该链接器
-          mkdir -p .cargo
-          echo '[target.aarch64-unknown-linux-gnu]' >> .cargo/config.toml
-          echo 'linker = "aarch64-linux-gnu-gcc"' >> .cargo/config.toml
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
 
-      - name: Build Release Binary
-        run: cargo build --release --target ${{ matrix.target }}
-        working-directory: ./src-tauri
-
-      - name: Prepare Artifact
-        shell: bash
+      - name: Set macOS minimum version
+        if: startsWith(matrix.os, 'macos')
         run: |
-          # 创建输出目录
-          mkdir -p output
-          
-          # 根据操作系统确定二进制文件名和后缀
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            BIN_NAME="github-ai-app.exe"
-          else
-            BIN_NAME="github-ai-app"
-          fi
-          
-          # 复制二进制文件并重命名
-          cp target/${{ matrix.target }}/release/$BIN_NAME output/github-ai-app-${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          echo "MACOSX_DEPLOYMENT_TARGET=10.13" >> $GITHUB_ENV
+          echo "CI=1" >> $GITHUB_ENV
 
-      - name: Upload Artifact
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.target }}
+
+      - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.artifact_name }}
-          path: output/*
+          name: bundle-${{ matrix.bundle }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/**
+          if-no-files-found: warn
 
   release:
     name: Create GitHub Release
@@ -106,7 +90,7 @@ jobs:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: binaries-*
+          pattern: bundle-*
           merge-multiple: true
 
       - name: Generate Checksums
@@ -129,4 +113,4 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
