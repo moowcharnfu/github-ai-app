@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       - name: Build frontend
-        run: npm run build
+        run: npm run build && npm run build
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -54,7 +54,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          apt-get install -y \
+          sudo apt-get install -y \
             libglib2.0-dev \
             libgtk-3-dev \
             libsoup2.4-dev \
