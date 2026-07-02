@@ -14,12 +14,14 @@ jobs:
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bundle: linux
-          - platform: macos-12
+          - platform: macos-latest
             target: x86_64-apple-darwin
             bundle: macos-x86_64
+            deployment_target: '10.15'
           - platform: macos-latest
             target: aarch64-apple-darwin
             bundle: macos-aarch64
+            deployment_target: '11.0'
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             bundle: windows-x86_64
@@ -48,6 +50,12 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Set macOS deployment target
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=${{ matrix.deployment_target }}" >> $GITHUB_ENV
+          echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+
       - name: Install frontend dependencies
         run: npm install
 
@@ -55,6 +63,8 @@ jobs:
         run: npm run build
 
       - name: Build Tauri app
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
         run: npm run tauri:build
 
       - name: Upload bundle
