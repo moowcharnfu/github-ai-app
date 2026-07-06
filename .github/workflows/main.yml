@@ -99,7 +99,7 @@ jobs:
         run: |          
           # 执行构建，指定 Target
           # 注意：这里不需要双重 --，npm run script -- args 会自动传递
-          npm run tauri build -- --target ${{ matrix.target }}
+          npm run tauri:build -- --target ${{ matrix.target }}
 
       # --- 关键修改：构建步骤 ---
       - name: Build Tauri App
