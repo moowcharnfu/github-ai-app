@@ -108,7 +108,7 @@ jobs:
         run: |          
           # 执行构建，指定 Target
           # 注意：这里不需要双重 --，npm run script -- args 会自动传递
-          npm run tauri build -- --target universal-apple-darwin
+          npm run tauri:build -- --target universal-apple-darwin
 
       # --- 调试步骤：确认文件生成 ---
       - name: Check Build Output
