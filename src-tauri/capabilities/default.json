@@ -13,6 +13,15 @@
     "shell:default",
     "dialog:default",
     "fs:default",
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://integrate.api.nvidia.com/**" },
+        { "url": "https://models.github.ai/**" },
+        { "url": "https://**" }
+      ]
+    },
     {
       "identifier": "fs:allow-read-file",
       "allow": [{ "path": "**" }]

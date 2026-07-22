@@ -5,6 +5,7 @@
 ## 功能
 
 - **桌面原生应用** — 基于 Tauri v2 构建的真实桌面窗口，支持 macOS / Windows / Linux 三平台
+- **无 CORS 限制** — Tauri 桌面模式下使用 Rust 端 HTTP 插件发送请求，绕过 WebView CORS 限制，Web 开发模式自动降级为浏览器 fetch
 - **浏览器风格界面** — 标题栏 + Tab 栏 + 工具栏布局，类浏览器体验，不依赖浏览器运行
 - **多配置 Profile** — 管理多组 API 配置（地址、密钥、模型），下拉即时切换
 - **Tab 会话管理** — 通过顶部 Tab 栏新建、切换、关闭会话
@@ -66,7 +67,12 @@ npm run tauri:build    # 构建桌面安装包（当前平台）
 
 ## 技术栈
 
-- [Vue 3](https://vuejs.org/) — UI 框架
+- [Vue 3](https://vuejs.org/) — UI 框架（reactive / computed / shallowRef，无 Pinia）
 - [Vite](https://vitejs.dev/) — 构建工具
 - [Tauri v2](https://v2.tauri.app/) — 桌面应用框架（Rust 后端）
-- Fetch API ReadableStream — SSE 流式请求
+  - `tauri-plugin-http` — Rust 端 HTTP 请求，绕过 WebView CORS
+  - `tauri-plugin-dialog` — 原生文件选择对话框
+  - `tauri-plugin-fs` — 文件系统读写（图片读取）
+  - `tauri-plugin-shell` — Shell 命令集成
+- Fetch API ReadableStream — SSE 流式请求（Web 模式） / Tauri HTTP Plugin（桌面模式）
+- localStorage — 纯前端数据持久化

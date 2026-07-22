@@ -1,3 +1,20 @@
+// ── Fetch selection: Tauri plugin (CORS-free) or native browser fetch ──
+
+let _fetch = null
+
+async function resolveFetch() {
+  if (_fetch) return _fetch
+  try {
+    // Tauri plugin-http — runs HTTP from Rust side, bypasses WebView CORS
+    const { fetch } = await import('@tauri-apps/plugin-http')
+    _fetch = fetch
+  } catch {
+    // Fallback to native fetch (browser / web dev mode)
+    _fetch = globalThis.fetch.bind(globalThis)
+  }
+  return _fetch
+}
+
 export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal, onToken }) {
   const useStream = !!onToken
 
@@ -15,16 +32,18 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     'Authorization': `Bearer ${apiKey}`
   }
 
+  const fetch = await resolveFetch()
+
   if (useStream) {
-    return sendStreamingRequest(apiUrl, headers, body, signal, onToken)
+    return sendStreamingRequest(fetch, apiUrl, headers, body, signal, onToken)
   } else {
-    return sendRegularRequest(apiUrl, headers, body, signal)
+    return sendRegularRequest(fetch, apiUrl, headers, body, signal)
   }
 }
 
 // ── Standard streaming ──
 
-async function sendStreamingRequest(url, headers, body, signal, onToken) {
+async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) {
   const response = await fetch(url, {
     method: 'POST',
     headers,
@@ -90,7 +109,7 @@ async function sendStreamingRequest(url, headers, body, signal, onToken) {
 
 // ── Non-streaming ──
 
-async function sendRegularRequest(url, headers, body, signal) {
+async function sendRegularRequest(fetch, url, headers, body, signal) {
   const response = await fetch(url, {
     method: 'POST',
     headers,
