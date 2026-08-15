@@ -83,7 +83,7 @@
         <div class="form-actions">
           <button class="btn btn-save" @click="handleSave">保存</button>
           <button class="btn btn-new" @click="handleNew">新建</button>
-          <button class="btn btn-delete" @click="handleDelete">删除</button>
+          <button class="btn btn-delete" :class="{ 'btn-delete-confirm': pendingDelete }" @click="handleDelete">{{ pendingDelete ? '确认删除?' : '删除' }}</button>
         </div>
       </div>
     </div>
@@ -91,8 +91,10 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useProfileStore } from '../stores/configProfileStore.js'
+
+const pendingDelete = ref(false)
 
 const props = defineProps({
   visible: Boolean
@@ -101,7 +103,7 @@ const props = defineProps({
 defineEmits(['close'])
 
 const store = useProfileStore()
-const currentId = store.activeProfileId()
+const currentId = computed(() => store.activeProfileId())
 const selectedId = ref(currentId)
 const form = ref({ name: '', apiUrl: '', apiKey: '', model: '' })
 const showKey = ref(false)
@@ -113,6 +115,7 @@ watch(() => props.visible, (val) => {
     loadForm(selectedId.value)
     showKey.value = false
     copiedField.value = null
+    pendingDelete.value = false
   }
 })
 
@@ -128,10 +131,12 @@ function selectProfile(id) {
   loadForm(id)
   showKey.value = false
   copiedField.value = null
+  pendingDelete.value = false
 }
 
 function handleSave() {
   store.updateProfile(selectedId.value, { ...form.value })
+  pendingDelete.value = false
 }
 
 function handleNew() {
@@ -140,10 +145,17 @@ function handleNew() {
   loadForm(p.id)
   showKey.value = false
   copiedField.value = null
+  pendingDelete.value = false
 }
 
 function handleDelete() {
   if (store.profiles.length <= 1) return
+  if (!pendingDelete.value) {
+    pendingDelete.value = true
+    setTimeout(() => { pendingDelete.value = false }, 3000)
+    return
+  }
+  pendingDelete.value = false
   store.deleteProfile(selectedId.value)
   selectedId.value = store.activeProfileId()
   loadForm(selectedId.value)
@@ -181,8 +193,9 @@ async function copyField(field) {
 
 .modal-container {
   display: flex;
-  width: 640px;
-  height: 400px;
+  width: min(640px, calc(100vw - 24px));
+  min-width: min(320px, calc(100vw - 24px));
+  max-height: 90vh;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
   border-radius: 12px;
@@ -191,9 +204,16 @@ async function copyField(field) {
 
 .modal-left {
   width: 200px;
+  flex-shrink: 0;
   border-right: 1px solid #2a2a4a;
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 560px) {
+  .modal-left {
+    display: none;
+  }
 }
 
 .profile-list-header {
@@ -260,6 +280,7 @@ async function copyField(field) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
 }
 
 .form-field {
@@ -383,5 +404,17 @@ async function copyField(field) {
 .btn-delete:hover {
   background: rgba(255, 74, 74, 0.1);
   border-color: #ff4a4a;
+}
+
+.btn-delete-confirm {
+  background: #ff4a4a;
+  color: #fff;
+  border-color: #ff4a4a;
+  animation: pulse-red 1s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 74, 74, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 74, 74, 0); }
 }
 </style>

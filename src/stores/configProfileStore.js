@@ -4,10 +4,11 @@ import { getItem, setItem } from '../utils/storage.js'
 const DEFAULT_API_URL = 'https://models.github.ai/inference/chat/completions'
 const DEFAULT_MODEL = 'openai/gpt-4o'
 
-let nextId = 1
-
 function generateId() {
-  return Date.now().toString(36) + '-' + (nextId++).toString(36)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
 }
 
 function loadProfiles() {

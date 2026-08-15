@@ -12,8 +12,9 @@
             @click="openLightbox(img)"
           />
         </div>
+        <div v-else-if="message.hadImages" class="image-placeholder">📷 图片（刷新后不可用）</div>
         <div v-for="(seg, i) in segments" :key="i">
-          <pre v-if="seg.type === 'code'" class="code-block"><code>{{ seg.content }}</code></pre>
+          <pre v-if="seg.type === 'code'" class="code-block"><div v-if="seg.language" class="code-lang">{{ seg.language }}</div><code>{{ seg.content }}</code></pre>
           <p v-else class="text-block">{{ seg.content }}</p>
         </div>
         <span v-if="streaming && message.content" class="cursor-blink">▍</span>
@@ -33,7 +34,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -50,8 +51,22 @@ function closeLightbox() {
   lightboxImg.value = null
 }
 
+function onKeydown(e) {
+  if (e.key === 'Escape' && lightboxImg.value) {
+    closeLightbox()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+})
+
 const segments = computed(() => {
-  const content = props.message.content || ''
+  const content = (props.message.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const parts = []
   let lastEnd = 0
   const codeRegex = /```(\w*)\n?([\s\S]*?)```/g
@@ -61,12 +76,29 @@ const segments = computed(() => {
     if (match.index > lastEnd) {
       parts.push({ type: 'text', content: content.slice(lastEnd, match.index) })
     }
-    parts.push({ type: 'code', content: match[2] })
+    parts.push({ type: 'code', content: match[2], language: match[1] || '' })
     lastEnd = match.index + match[0].length
   }
 
   if (lastEnd < content.length) {
-    parts.push({ type: 'text', content: content.slice(lastEnd) })
+    const remaining = content.slice(lastEnd)
+    const fenceIdx = remaining.indexOf('```')
+    if (fenceIdx !== -1) {
+      // Incomplete code block (streaming)
+      if (fenceIdx > 0) {
+        parts.push({ type: 'text', content: remaining.slice(0, fenceIdx) })
+      }
+      let afterFence = remaining.slice(fenceIdx + 3)
+      const nlIdx = afterFence.indexOf('\n')
+      if (nlIdx !== -1) {
+        afterFence = afterFence.slice(nlIdx + 1)
+      } else {
+        afterFence = ''
+      }
+      parts.push({ type: 'code', content: afterFence })
+    } else {
+      parts.push({ type: 'text', content: remaining })
+    }
   }
 
   return parts.length > 0 ? parts : [{ type: 'text', content }]
@@ -82,8 +114,8 @@ const segments = computed(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .message.user {
@@ -114,6 +146,8 @@ const segments = computed(() => {
 
 .bubble {
   max-width: 80%;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .bubble-content {
@@ -157,6 +191,14 @@ const segments = computed(() => {
   color: #a0d8a0;
 }
 
+.code-lang {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .cursor-blink {
   animation: blink 0.8s step-end infinite;
   color: #4a9eff;
@@ -190,6 +232,16 @@ const segments = computed(() => {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
+}
+
+.image-placeholder {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  color: #666;
+  font-size: 13px;
+  background: #0f0f1f;
+  border: 1px dashed #2a2a4a;
+  border-radius: 8px;
 }
 
 .msg-image {

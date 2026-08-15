@@ -13,6 +13,8 @@ html, body {
   color: #e0e0e0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-color: #2a2a4a transparent;
+  scrollbar-width: thin;
 }
 
 #app {

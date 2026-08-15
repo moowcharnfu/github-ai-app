@@ -1,3 +1,4 @@
+
 <template>
   <div class="chat-area">
     <div v-if="!activeSession" class="welcome">
@@ -23,6 +24,9 @@
       </div>
 
       <div class="input-bar">
+        <Transition name="error-fade">
+          <div v-if="errorMsg" class="error-toast">{{ errorMsg }}</div>
+        </Transition>
         <div v-if="pendingImage" class="image-preview">
           <div class="preview-item">
             <img :src="`data:${pendingImage.mimeType};base64,${pendingImage.data}`" class="preview-thumb" />
@@ -71,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, onUnmounted } from 'vue'
 import { useSessionStore } from '../stores/sessionStore.js'
 import { useConfig } from '../stores/configStore.js'
 import { sendChatMessage } from '../utils/api.js'
@@ -89,12 +93,29 @@ const currentReply = ref(null)
 const pendingImage = ref(null)
 let abortController = null
 
+
 const activeSession = store.activeSession
 
+const errorMsg = ref('')
+let errorTimer = null
+let latestContent = ''
+let rafScheduled = false
+
+function showError(msg) {
+  errorMsg.value = msg
+  if (errorTimer) clearTimeout(errorTimer)
+  errorTimer = setTimeout(() => { errorMsg.value = '' }, 3000)
+}
+
+let resizeRaf = null
 function autoResize(e) {
-  const el = e.target
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 150) + 'px'
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
+  resizeRaf = requestAnimationFrame(() => {
+    resizeRaf = null
+    const el = e.target
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 150) + 'px'
+  })
 }
 
 function scrollToBottom(smooth = true) {
@@ -125,7 +146,7 @@ async function pickImage() {
     const mimeType = selected.match(/\.png$/i) ? 'image/png' : 'image/jpeg'
     pendingImage.value = { data: base64, mimeType }
   } catch (e) {
-    console.warn('读取图片失败:', e)
+    showError('读取图片失败')
   }
 }
 
@@ -145,23 +166,24 @@ function removeImage() {
 
 async function send() {
   const text = inputText.value.trim()
-  if (!text || isLoading.value) return
+  if ((!text && !pendingImage.value) || isLoading.value) return
 
   const session = store.ensureActiveSession()
   if (!session) return
 
   if (!config.apiKey) {
-    alert('请先在顶部配置 API 密钥')
+    showError('请先在顶部配置 API 密钥')
     return
   }
   if (!config.apiUrl) {
-    alert('请配置 API 地址')
+    showError('请配置 API 地址')
     return
   }
 
+  const draftedText = inputText.value
   inputText.value = ''
 
-  const msgData = { id: Date.now().toString(36) + '-user', role: 'user', content: text, timestamp: Date.now() }
+  const msgData = { id: Date.now().toString(36) + '-user', role: 'user', content: text || '[图片]', timestamp: Date.now() }
   if (pendingImage.value) {
     msgData.images = [pendingImage.value]
   }
@@ -171,7 +193,7 @@ async function send() {
   // 仅最新用户消息保留 images 字段，避免历史图片污染后续请求
   const lastUserIdx = [...session.messages].reverse().findIndex(m => m.role === 'user')
   const keepImagesIdx = lastUserIdx === -1 ? -1 : session.messages.length - 1 - lastUserIdx
-  const messages = session.messages.map((m, i) => {
+  const requestMessages = session.messages.map((m, i) => {
     const msg = { role: m.role, content: m.content }
     if (i === keepImagesIdx && m.images?.length) {
       msg.images = m.images
@@ -198,11 +220,15 @@ async function send() {
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
       model: config.model,
-      messages: messages,
+      messages: requestMessages,
       signal: abortController.signal,
       onToken: (delta, fullContent) => {
+        latestContent = fullContent
+        if (rafScheduled) return
+        rafScheduled = true
         requestAnimationFrame(() => {
-          replyMsg.content = fullContent
+          rafScheduled = false
+          replyMsg.content = latestContent
           scrollToBottom()
         })
       }
@@ -216,6 +242,7 @@ async function send() {
       elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
     })
     currentReply.value = null
+    inputText.value = ''
   } catch (err) {
     if (err.name === 'AbortError') {
       if (replyMsg.content) {
@@ -228,16 +255,32 @@ async function send() {
         })
       }
       currentReply.value = null
+      inputText.value = draftedText
+    } else if (err.name === 'TimeoutError') {
+      showError('请求超时')
+      if (replyMsg.content) {
+        store.addMessage(session.id, {
+          id: replyId,
+          role: 'assistant',
+          content: replyMsg.content,
+          timestamp: Date.now(),
+          elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
+        })
+      }
+      currentReply.value = null
+      inputText.value = draftedText
     } else {
-      console.warn('Streaming failed, trying non-streaming:', err)
+      // Streaming failed, fallback to non-streaming
+      if (!abortController) abortController = new AbortController()
       try {
         const result = await sendChatMessage({
           apiUrl: config.apiUrl,
           apiKey: config.apiKey,
           model: config.model,
-          messages: messages,
+          messages: requestMessages,
           signal: abortController.signal,
-          onToken: null
+          onToken: null,
+          timeout: 30000
         })
         replyMsg.content = result
         store.addMessage(session.id, {
@@ -248,18 +291,22 @@ async function send() {
           elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
         })
         currentReply.value = null
+        inputText.value = ''
       } catch (fallbackErr) {
         if (fallbackErr.name !== 'AbortError') {
-          replyMsg.content = `错误: ${fallbackErr.message}`
+          showError(`错误: ${fallbackErr.message}`)
         }
-        store.addMessage(session.id, {
-          id: replyId,
-          role: 'assistant',
-          content: replyMsg.content,
-          timestamp: Date.now(),
-          elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-        })
+        if (replyMsg.content) {
+          store.addMessage(session.id, {
+            id: replyId,
+            role: 'assistant',
+            content: replyMsg.content,
+            timestamp: Date.now(),
+            elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
+          })
+        }
         currentReply.value = null
+        inputText.value = draftedText
       }
     }
   }
@@ -278,12 +325,28 @@ function stopGeneration() {
   }
 }
 
-// Auto-scroll and auto-focus when switching sessions
-watch(activeSession, () => {
+// Abort streaming if session changes during generation
+watch(activeSession, (newVal, oldVal) => {
+  if (isStreaming.value && oldVal && newVal?.id !== oldVal?.id) {
+    if (abortController) {
+      abortController.abort()
+      abortController = null
+    }
+    currentReply.value = null
+    isLoading.value = false
+    isStreaming.value = false
+  }
   nextTick(() => {
     scrollToBottom(false)
     inputRef.value?.focus()
   })
+})
+
+onUnmounted(() => {
+  clearTimeout(errorTimer)
+  if (abortController) {
+    abortController.abort()
+  }
 })
 </script>
 
@@ -327,6 +390,7 @@ watch(activeSession, () => {
   padding: 14px 18px;
   border-top: 1px solid #2a2a4a;
   background: #0f0f23;
+  position: relative;
 }
 
 .image-preview {

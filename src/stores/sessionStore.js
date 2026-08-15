@@ -1,22 +1,28 @@
 import { reactive, computed, shallowRef } from 'vue'
 import { getItem, setItem } from '../utils/storage.js'
 
-let nextId = 1
-
 function generateId() {
-  return Date.now().toString(36) + '-' + (nextId++).toString(36)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
 }
 
 const sessions = reactive(
   getItem('chat-sessions') || []
 )
 
-const activeId = shallowRef(sessions.length > 0 ? sessions[0].id : null)
+const storedActiveId = getItem('active-session-id')
+const initialActiveId = storedActiveId && sessions.find(s => s.id === storedActiveId)
+  ? storedActiveId
+  : (sessions.length > 0 ? sessions[0].id : null)
+const activeId = shallowRef(initialActiveId)
 
 function persist() {
   setItem('chat-sessions', sessions.map(s => ({
     ...s,
-    messages: s.messages
+    // Strip base64 image data to avoid localStorage quota overflow
+    messages: s.messages.map(({ images, ...rest }) => images?.length ? { ...rest, hadImages: true } : rest)
   })))
 }
 
@@ -35,12 +41,14 @@ export function useSessionStore() {
     }
     sessions.unshift(session)
     activeId.value = session.id
+    setItem('active-session-id', session.id)
     persist()
     return session
   }
 
   function switchSession(id) {
     activeId.value = id
+    setItem('active-session-id', id)
   }
 
   function deleteSession(id) {
@@ -50,6 +58,7 @@ export function useSessionStore() {
     sessions.splice(idx, 1)
     if (activeId.value === id) {
       activeId.value = sessions.length > 0 ? sessions[0].id : null
+      if (activeId.value) setItem('active-session-id', activeId.value)
     }
     persist()
   }
@@ -72,19 +81,6 @@ export function useSessionStore() {
           : '消息'
     }
     persist()
-  }
-
-  function updateLastMessage(sessionId, content) {
-    const session = sessions.find(s => s.id === sessionId)
-    if (!session || session.messages.length === 0) return
-
-    const last = session.messages[session.messages.length - 1]
-    if (last.role === 'assistant') {
-      last.content = content
-      last.timestamp = Date.now()
-      session.updatedAt = Date.now()
-      persist()
-    }
   }
 
   function ensureActiveSession() {

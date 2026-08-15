@@ -1,7 +1,7 @@
 <template>
   <div class="tool-bar">
     <div class="tool-left">
-      <div class="custom-select" ref="dropdownRef">
+      <div class="custom-select" ref="dropdownRef" data-placement="bottom">
         <button class="select-trigger" @click="toggleDropdown">
           <span class="select-label">{{ currentProfileName }}</span>
           <svg class="select-arrow" :class="{ open: isOpen }" width="12" height="12" viewBox="0 0 12 12">
@@ -62,12 +62,25 @@ const currentModel = computed(() => {
 })
 
 function toggleDropdown() {
+  if (!isOpen.value) placeDropdown()
   isOpen.value = !isOpen.value
 }
 
 function selectProfile(id) {
   store.switchProfile(id)
   isOpen.value = false
+}
+
+function placeDropdown() {
+  const rect = dropdownRef.value?.getBoundingClientRect()
+  const target = dropdownRef.value
+  if (!rect || !target) return
+  const below = window.innerHeight - rect.bottom
+  if (below < 300 && below < rect.top) {
+    target.setAttribute('data-placement', 'top')
+  } else {
+    target.setAttribute('data-placement', 'bottom')
+  }
 }
 
 function handleClickOutside(e) {
@@ -78,10 +91,13 @@ function handleClickOutside(e) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  placeDropdown()
+  window.addEventListener('resize', placeDropdown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', placeDropdown)
 })
 </script>
 
@@ -152,6 +168,8 @@ onUnmounted(() => {
   top: calc(100% + 4px);
   left: 0;
   min-width: 160px;
+  max-height: 300px;
+  overflow-y: auto;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
   border-radius: 8px;
@@ -164,12 +182,17 @@ onUnmounted(() => {
 @keyframes dropdownIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.custom-select[data-placement="top"] .select-dropdown {
+  bottom: calc(100% + 4px);
+  top: auto;
 }
 
 .select-option {

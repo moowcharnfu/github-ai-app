@@ -1,0 +1,25 @@
+# OpenSpec
+openspec/
+
+# Claude Code
+.claude/
+
+# Build output
+dist/
+
+# Tauri (Rust build output)
+src-tauri/target/
+src-tauri/gen/
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+*.local.xml
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example

@@ -1,0 +1,1 @@
+继续修复遗留低风险问题；按稳定性优先顺序改动 API、ChatArea、ConfigModal、ToolBar 四个文件，先执行小范围补丁，再汇总变更。

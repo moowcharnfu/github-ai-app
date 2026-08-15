@@ -70,6 +70,7 @@ function handleClose(id) {
   height: 100%;
   background: #0f0f23;
   border-right: 1px solid #2a2a4a;
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   transition: background 0.15s;
   flex-shrink: 0;
@@ -129,6 +130,13 @@ function handleClose(id) {
 .tab-close.disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .tab-close {
+    opacity: 0.6;
+    padding: 6px 10px;
+  }
 }
 
 .tab-add {
