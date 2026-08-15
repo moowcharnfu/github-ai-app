@@ -1,5 +1,5 @@
 import { reactive, computed, ref } from 'vue'
-import { getItem, setItem } from '../utils/storage.js'
+import { getItem, setItem, removeItem } from '../utils/storage.js'
 
 const DEFAULT_API_URL = 'https://models.github.ai/inference/chat/completions'
 const DEFAULT_MODEL = 'openai/gpt-4o'
@@ -14,7 +14,7 @@ function generateId() {
 function loadProfiles() {
   const stored = getItem('config-profiles')
   if (stored && Array.isArray(stored) && stored.length > 0) {
-    return stored
+    return stored.map(profile => ({ ...profile, apiKey: '' }))
   }
 
   // Migrate from old config
@@ -24,12 +24,13 @@ function loadProfiles() {
       id: generateId(),
       name: '默认配置',
       apiUrl: oldConfig.apiUrl || DEFAULT_API_URL,
-      apiKey: oldConfig.apiKey || '',
+      apiKey: '',
       model: oldConfig.model || DEFAULT_MODEL,
     }
     const result = [defaultProfile]
     setItem('config-profiles', result)
     setItem('active-profile-id', defaultProfile.id)
+    removeItem('app-config')
     return result
   }
 
@@ -56,7 +57,7 @@ if (!activeId.value || !profiles.find(p => p.id === activeId.value)) {
 }
 
 function persist() {
-  setItem('config-profiles', profiles.slice())
+  setItem('config-profiles', profiles.map(({ apiKey, ...profile }) => profile))
 }
 
 export function useProfileStore() {

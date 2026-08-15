@@ -11,6 +11,11 @@ class TimeoutError extends Error {
 
 async function resolveFetch() {
   if (_fetch) return _fetch
+  // Regular browser / Vite dev has no Tauri bridge, so native fetch works
+  if (!globalThis.__TAURI_INTERNALS__) {
+    _fetch = globalThis.fetch.bind(globalThis)
+    return _fetch
+  }
   try {
     // Tauri plugin-http — runs HTTP from Rust side, bypasses WebView CORS
     const { fetch } = await import('@tauri-apps/plugin-http')
@@ -20,6 +25,12 @@ async function resolveFetch() {
     _fetch = globalThis.fetch.bind(globalThis)
   }
   return _fetch
+}
+
+export function parseSseDataLine(line) {
+  const trimmed = line.trim()
+  if (!trimmed || !trimmed.startsWith('data:')) return null
+  return trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5)
 }
 
 export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal, onToken, timeout = 120000 }) {
@@ -44,6 +55,7 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${apiKey}`
   }
+  if (useStream) headers['Accept'] = 'text/event-stream'
 
   const fetch = await resolveFetch()
 
@@ -93,10 +105,31 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
     throw new Error(`API error ${response.status}: ${errText || response.statusText}`)
   }
 
+  if (!response.body) throw new Error('响应体为空')
+
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let fullContent = ''
   let buffer = ''
+  let eventData = ''
+
+  function flushEvent() {
+    if (!eventData || eventData === '[DONE]') {
+      eventData = ''
+      return
+    }
+    try {
+      const parsed = JSON.parse(eventData)
+      const delta = parsed.choices?.[0]?.delta?.content
+      if (delta) {
+        fullContent += delta
+        onToken(delta, fullContent)
+      }
+    } catch {
+      // skip malformed JSON chunks
+    }
+    eventData = ''
+  }
 
   try {
     while (true) {
@@ -108,39 +141,23 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
       buffer = lines.pop() || ''
 
       for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-
-        const data = trimmed.slice(6)
-        if (data === '[DONE]') continue
-
-        try {
-          const parsed = JSON.parse(data)
-          const delta = parsed.choices?.[0]?.delta?.content
-          if (delta) {
-            fullContent += delta
-            onToken(delta, fullContent)
-          }
-        } catch {
-          // skip malformed JSON chunks
+        if (line.trim() === '') {
+          flushEvent()
+          continue
+        }
+        const data = parseSseDataLine(line)
+        if (data !== null) {
+          eventData = eventData ? eventData + '\n' + data : data
         }
       }
     }
 
     // process remaining buffer
-    if (buffer.trim().startsWith('data: ')) {
-      const data = buffer.trim().slice(6)
-      if (data !== '[DONE]') {
-        try {
-          const parsed = JSON.parse(data)
-          const delta = parsed.choices?.[0]?.delta?.content
-          if (delta) {
-            fullContent += delta
-            onToken(delta, fullContent)
-          }
-        } catch { /* skip */ }
-      }
+    const tailData = parseSseDataLine(buffer)
+    if (tailData !== null) {
+      eventData = eventData ? eventData + '\n' + tailData : tailData
     }
+    flushEvent()
   } finally {
     try { reader.releaseLock() } catch { /* ignore */ }
   }

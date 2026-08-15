@@ -116,6 +116,7 @@ onUnmounted(() => {
 .tool-left {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .custom-select {
@@ -134,6 +135,7 @@ onUnmounted(() => {
   font-size: 12px;
   cursor: pointer;
   min-width: 120px;
+  max-width: 220px;
   transition: border-color 0.2s, box-shadow 0.2s;
   font-family: inherit;
 }
@@ -151,6 +153,11 @@ onUnmounted(() => {
 .select-label {
   flex: 1;
   text-align: left;
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .select-arrow {
@@ -226,9 +233,15 @@ onUnmounted(() => {
 .tool-center {
   flex: 1;
   text-align: center;
+  min-width: 0;
 }
 
 .model-name {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #777;
   font-size: 12px;
   font-family: monospace;

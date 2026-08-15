@@ -99,7 +99,14 @@ const activeSession = store.activeSession
 const errorMsg = ref('')
 let errorTimer = null
 let latestContent = ''
-let rafScheduled = false
+let streamRaf = null
+
+function generateMessageId(role) {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Date.now().toString(36) + '-' + role + '-' + Math.random().toString(36).slice(2, 10)
+}
 
 function showError(msg) {
   errorMsg.value = msg
@@ -131,6 +138,11 @@ function scrollToBottom(smooth = true) {
 }
 
 async function pickImage() {
+  if (isLoading.value) return
+  if (!globalThis.__TAURI_INTERNALS__) {
+    pickImageBrowser()
+    return
+  }
   const { open } = await import('@tauri-apps/plugin-dialog')
   const { readFile } = await import('@tauri-apps/plugin-fs')
 
@@ -148,6 +160,27 @@ async function pickImage() {
   } catch (e) {
     showError('读取图片失败')
   }
+}
+
+function pickImageBrowser() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/png,image/jpeg'
+  input.onchange = () => {
+    const file = input.files && input.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string') return
+      const commaIdx = result.indexOf(',')
+      const base64 = commaIdx >= 0 ? result.slice(commaIdx + 1) : result
+      pendingImage.value = { data: base64, mimeType: file.type }
+    }
+    reader.onerror = () => showError('读取图片失败')
+    reader.readAsDataURL(file)
+  }
+  input.click()
 }
 
 function arrayToBase64(arr) {
@@ -183,7 +216,7 @@ async function send() {
   const draftedText = inputText.value
   inputText.value = ''
 
-  const msgData = { id: Date.now().toString(36) + '-user', role: 'user', content: text || '[图片]', timestamp: Date.now() }
+  const msgData = { id: generateMessageId('user'), role: 'user', content: text || '[图片]', timestamp: Date.now() }
   if (pendingImage.value) {
     msgData.images = [pendingImage.value]
   }
@@ -201,7 +234,7 @@ async function send() {
     return msg
   })
 
-  const replyId = Date.now().toString(36) + '-assistant'
+  const replyId = generateMessageId('assistant')
   const replyMsg = {
     id: replyId,
     role: 'assistant',
@@ -214,6 +247,7 @@ async function send() {
 
   abortController = new AbortController()
   const requestStart = Date.now()
+  latestContent = ''
 
   try {
     await sendChatMessage({
@@ -224,51 +258,58 @@ async function send() {
       signal: abortController.signal,
       onToken: (delta, fullContent) => {
         latestContent = fullContent
-        if (rafScheduled) return
-        rafScheduled = true
-        requestAnimationFrame(() => {
-          rafScheduled = false
+        if (streamRaf) return
+        streamRaf = requestAnimationFrame(() => {
+          streamRaf = null
           replyMsg.content = latestContent
           scrollToBottom()
         })
       }
     })
 
-    store.addMessage(session.id, {
-      id: replyId,
-      role: 'assistant',
-      content: replyMsg.content,
-      timestamp: Date.now(),
-      elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-    })
-    currentReply.value = null
-    inputText.value = ''
+    if (streamRaf) { cancelAnimationFrame(streamRaf); streamRaf = null }
+    replyMsg.content = latestContent
+    if (latestContent) {
+      store.addMessage(session.id, {
+        id: replyId,
+        role: 'assistant',
+        content: latestContent,
+        timestamp: Date.now(),
+        elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
+      })
+      currentReply.value = null
+      inputText.value = ''
+    } else {
+      showError('收到空回复')
+      currentReply.value = null
+      if (activeSession.value?.id === session.id) inputText.value = draftedText
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
-      if (replyMsg.content) {
+      if (latestContent) {
         store.addMessage(session.id, {
           id: replyId,
           role: 'assistant',
-          content: replyMsg.content,
+          content: latestContent,
           timestamp: Date.now(),
           elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
         })
       }
       currentReply.value = null
-      inputText.value = draftedText
+      if (activeSession.value?.id === session.id) inputText.value = draftedText
     } else if (err.name === 'TimeoutError') {
       showError('请求超时')
-      if (replyMsg.content) {
+      if (latestContent) {
         store.addMessage(session.id, {
           id: replyId,
           role: 'assistant',
-          content: replyMsg.content,
+          content: latestContent,
           timestamp: Date.now(),
           elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
         })
       }
       currentReply.value = null
-      inputText.value = draftedText
+      if (activeSession.value?.id === session.id) inputText.value = draftedText
     } else {
       // Streaming failed, fallback to non-streaming
       if (!abortController) abortController = new AbortController()
@@ -283,30 +324,37 @@ async function send() {
           timeout: 30000
         })
         replyMsg.content = result
-        store.addMessage(session.id, {
-          id: replyId,
-          role: 'assistant',
-          content: result,
-          timestamp: Date.now(),
-          elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-        })
-        currentReply.value = null
-        inputText.value = ''
+        latestContent = result
+        if (latestContent) {
+          store.addMessage(session.id, {
+            id: replyId,
+            role: 'assistant',
+            content: latestContent,
+            timestamp: Date.now(),
+            elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
+          })
+          currentReply.value = null
+          inputText.value = ''
+        } else {
+          showError('收到空回复')
+          currentReply.value = null
+          if (activeSession.value?.id === session.id) inputText.value = draftedText
+        }
       } catch (fallbackErr) {
         if (fallbackErr.name !== 'AbortError') {
           showError(`错误: ${fallbackErr.message}`)
         }
-        if (replyMsg.content) {
+        if (latestContent) {
           store.addMessage(session.id, {
             id: replyId,
             role: 'assistant',
-            content: replyMsg.content,
+            content: latestContent,
             timestamp: Date.now(),
             elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
           })
         }
         currentReply.value = null
-        inputText.value = draftedText
+        if (activeSession.value?.id === session.id) inputText.value = draftedText
       }
     }
   }
@@ -342,8 +390,14 @@ watch(activeSession, (newVal, oldVal) => {
   })
 })
 
+watch(() => store.persistFailed.value, (v) => {
+  if (v) showError('存储空间不足，部分消息可能无法保存')
+})
+
 onUnmounted(() => {
   clearTimeout(errorTimer)
+  if (streamRaf) cancelAnimationFrame(streamRaf)
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
   if (abortController) {
     abortController.abort()
   }
@@ -391,6 +445,35 @@ onUnmounted(() => {
   border-top: 1px solid #2a2a4a;
   background: #0f0f23;
   position: relative;
+}
+
+.error-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 6px);
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: 90%;
+  padding: 8px 14px;
+  background: #3a1620;
+  color: #ff9d9d;
+  border: 1px solid #7a2e3e;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.error-fade-enter-active,
+.error-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.error-fade-enter-from,
+.error-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
 }
 
 .image-preview {

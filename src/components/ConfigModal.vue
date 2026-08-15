@@ -1,6 +1,7 @@
 <template>
   <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-container">
+      <button class="modal-close" @click="emit('close')" title="关闭">✕</button>
       <div class="modal-left">
         <div class="profile-list-header">配置列表</div>
         <div class="profile-list">
@@ -45,7 +46,7 @@
             </div>
           </div>
           <div class="form-field">
-            <label>密钥</label>
+            <label>密钥（仅本次运行保存）</label>
             <div class="input-inner">
               <input v-model="form.apiKey" :type="showKey ? 'text' : 'password'" placeholder="Bearer Token" />
               <button class="input-btn" @click="showKey = !showKey" :title="showKey ? '隐藏' : '显示'">
@@ -80,6 +81,7 @@
             </div>
           </div>
         </div>
+        <div v-if="formError" class="form-error">{{ formError }}</div>
         <div class="form-actions">
           <button class="btn btn-save" @click="handleSave">保存</button>
           <button class="btn btn-new" @click="handleNew">新建</button>
@@ -91,23 +93,34 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useProfileStore } from '../stores/configProfileStore.js'
 
 const pendingDelete = ref(false)
+let deleteTimer = null
+let copyTimer = null
 
 const props = defineProps({
   visible: Boolean
 })
 
-defineEmits(['close'])
+const emit = defineEmits(['close'])
 
 const store = useProfileStore()
 const currentId = computed(() => store.activeProfileId())
-const selectedId = ref(currentId)
+const selectedId = ref(store.activeProfileId())
 const form = ref({ name: '', apiUrl: '', apiKey: '', model: '' })
 const showKey = ref(false)
 const copiedField = ref(null)
+const formError = ref('')
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && props.visible) emit('close')
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+})
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -116,6 +129,7 @@ watch(() => props.visible, (val) => {
     showKey.value = false
     copiedField.value = null
     pendingDelete.value = false
+    formError.value = ''
   }
 })
 
@@ -132,35 +146,49 @@ function selectProfile(id) {
   showKey.value = false
   copiedField.value = null
   pendingDelete.value = false
+  formError.value = ''
 }
 
 function handleSave() {
-  store.updateProfile(selectedId.value, { ...form.value })
+  const name = form.value.name.trim()
+  const apiUrl = form.value.apiUrl.trim()
+  const model = form.value.model.trim()
+  if (!name) { formError.value = '请填写配置名称'; return }
+  if (!apiUrl || !/^https?:\/\//i.test(apiUrl)) { formError.value = '请填写有效的 API 地址'; return }
+  if (!model) { formError.value = '请填写模型'; return }
+  formError.value = ''
+  store.updateProfile(selectedId.value, { name, apiUrl, apiKey: form.value.apiKey, model })
   pendingDelete.value = false
 }
 
 function handleNew() {
   const p = store.createProfile('新配置')
+  store.switchProfile(p.id)
   selectedId.value = p.id
   loadForm(p.id)
   showKey.value = false
   copiedField.value = null
   pendingDelete.value = false
+  formError.value = ''
 }
 
 function handleDelete() {
   if (store.profiles.length <= 1) return
   if (!pendingDelete.value) {
     pendingDelete.value = true
-    setTimeout(() => { pendingDelete.value = false }, 3000)
+    clearTimeout(deleteTimer)
+    deleteTimer = setTimeout(() => { pendingDelete.value = false }, 3000)
     return
   }
+  clearTimeout(deleteTimer)
+  deleteTimer = null
   pendingDelete.value = false
   store.deleteProfile(selectedId.value)
   selectedId.value = store.activeProfileId()
   loadForm(selectedId.value)
   showKey.value = false
   copiedField.value = null
+  formError.value = ''
 }
 
 async function copyField(field) {
@@ -169,7 +197,8 @@ async function copyField(field) {
   try {
     await navigator.clipboard.writeText(value)
     copiedField.value = field
-    setTimeout(() => {
+    clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
       if (copiedField.value === field) {
         copiedField.value = null
       }
@@ -178,6 +207,12 @@ async function copyField(field) {
     // silent fail if clipboard API unavailable
   }
 }
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  clearTimeout(deleteTimer)
+  clearTimeout(copyTimer)
+})
 </script>
 
 <style scoped>
@@ -200,6 +235,31 @@ async function copyField(field) {
   border: 1px solid #2a2a4a;
   border-radius: 12px;
   overflow: hidden;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close:hover {
+  background: rgba(255, 74, 74, 0.15);
+  color: #ff4a4a;
 }
 
 .modal-left {
@@ -281,6 +341,12 @@ async function copyField(field) {
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+}
+
+.form-error {
+  color: #ff9d9d;
+  font-size: 12px;
+  padding: 6px 0 0;
 }
 
 .form-field {

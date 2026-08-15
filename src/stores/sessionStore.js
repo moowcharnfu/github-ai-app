@@ -1,4 +1,4 @@
-import { reactive, computed, shallowRef } from 'vue'
+import { reactive, computed, shallowRef, ref } from 'vue'
 import { getItem, setItem } from '../utils/storage.js'
 
 function generateId() {
@@ -17,13 +17,18 @@ const initialActiveId = storedActiveId && sessions.find(s => s.id === storedActi
   ? storedActiveId
   : (sessions.length > 0 ? sessions[0].id : null)
 const activeId = shallowRef(initialActiveId)
+const persistFailed = ref(false)
 
 function persist() {
-  setItem('chat-sessions', sessions.map(s => ({
+  const ok = setItem('chat-sessions', sessions.map(s => ({
     ...s,
     // Strip base64 image data to avoid localStorage quota overflow
     messages: s.messages.map(({ images, ...rest }) => images?.length ? { ...rest, hadImages: true } : rest)
   })))
+  persistFailed.value = !ok
+  if (!ok) {
+    try { window.dispatchEvent(new CustomEvent('chat:storage-quota')) } catch { /* ignore */ }
+  }
 }
 
 export function useSessionStore() {
@@ -94,11 +99,11 @@ export function useSessionStore() {
     sessions,
     activeId: computed(() => activeSession.value?.id || null),
     activeSession,
+    persistFailed: computed(() => persistFailed.value),
     createSession,
     switchSession,
     deleteSession,
     addMessage,
-    updateLastMessage,
     ensureActiveSession
   }
 }
