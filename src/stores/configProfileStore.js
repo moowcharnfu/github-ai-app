@@ -14,7 +14,7 @@ function generateId() {
 function loadProfiles() {
   const stored = getItem('config-profiles')
   if (stored && Array.isArray(stored) && stored.length > 0) {
-    return stored.map(profile => ({ ...profile, apiKey: '' }))
+    return stored
   }
 
   // Migrate from old config
@@ -24,7 +24,7 @@ function loadProfiles() {
       id: generateId(),
       name: '默认配置',
       apiUrl: oldConfig.apiUrl || DEFAULT_API_URL,
-      apiKey: '',
+      apiKey: oldConfig.apiKey || '',
       model: oldConfig.model || DEFAULT_MODEL,
     }
     const result = [defaultProfile]
@@ -57,7 +57,7 @@ if (!activeId.value || !profiles.find(p => p.id === activeId.value)) {
 }
 
 function persist() {
-  setItem('config-profiles', profiles.map(({ apiKey, ...profile }) => profile))
+  setItem('config-profiles', profiles.slice())
 }
 
 export function useProfileStore() {
