@@ -3,6 +3,11 @@
   <div class="chat-area">
     <div v-if="!activeSession" class="welcome">
       <div class="welcome-content">
+        <div class="welcome-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
         <h1>GitHub AI Chat</h1>
         <p>点击「+」新建会话开始对话</p>
       </div>
@@ -421,29 +426,50 @@ onUnmounted(() => {
 
 .welcome-content {
   text-align: center;
+  padding: 44px 60px;
+  background: #13132a;
+  border: 1px solid #232348;
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(74, 158, 255, 0.06);
+}
+
+.welcome-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6fb4ff;
+  background: linear-gradient(135deg, #16304f, #1a1a3e);
+  border: 1px solid #2c4a75;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(74, 158, 255, 0.18);
 }
 
 .welcome-content h1 {
-  font-size: 24px;
+  font-size: 26px;
   color: #4a9eff;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+  letter-spacing: 0;
 }
 
 .welcome-content p {
-  color: #666;
+  color: #7a7aa0;
   font-size: 14px;
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 28px 32px;
+  scroll-behavior: smooth;
 }
 
 .input-bar {
-  padding: 14px 18px;
+  padding: 14px 20px 18px;
   border-top: 1px solid #2a2a4a;
-  background: #0f0f23;
+  background: linear-gradient(180deg, #11112a, #0f0f23);
   position: relative;
 }
 
@@ -458,7 +484,7 @@ onUnmounted(() => {
   background: #3a1620;
   color: #ff9d9d;
   border: 1px solid #7a2e3e;
-  border-radius: 8px;
+  border-radius: 14px;
   font-size: 13px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   white-space: normal;
@@ -487,7 +513,7 @@ onUnmounted(() => {
   width: 80px;
   height: 80px;
   border: 1px solid #2a2a4a;
-  border-radius: 8px;
+  border-radius: 16px;
   overflow: hidden;
   background: #1a1a2e;
 }
@@ -502,8 +528,8 @@ onUnmounted(() => {
   position: absolute;
   top: 2px;
   right: 2px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: none;
   background: rgba(0,0,0,0.7);
@@ -526,14 +552,19 @@ onUnmounted(() => {
   align-items: flex-end;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
-  border-radius: 14px;
-  padding: 10px 14px;
+  border-radius: 22px;
+  padding: 8px 8px 8px 20px;
   transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+.input-wrapper:hover {
+  border-color: #3a3a5e;
 }
 
 .input-wrapper:focus-within {
   border-color: #4a9eff;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+  box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.14), 0 10px 32px rgba(0, 0, 0, 0.32);
 }
 
 .input-wrapper textarea {
@@ -561,9 +592,10 @@ onUnmounted(() => {
   border: none;
   color: #555;
   cursor: pointer;
-  padding: 4px;
+  width: 36px;
+  height: 36px;
   margin-bottom: 2px;
-  border-radius: 6px;
+  border-radius: 12px;
   flex-shrink: 0;
   transition: color 0.15s, background 0.15s, transform 0.12s;
 }
@@ -583,16 +615,17 @@ onUnmounted(() => {
 }
 
 .send-btn, .stop-btn {
-  padding: 8px 20px;
+  padding: 8px 24px;
   border: none;
-  border-radius: 10px;
+  border-radius: 14px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   transition: background 0.2s, transform 0.12s, box-shadow 0.2s;
   white-space: nowrap;
   letter-spacing: 0.3px;
-  min-height: 34px;
+  min-height: 36px;
+  align-self: center;
 }
 
 .send-btn:active, .stop-btn:active {

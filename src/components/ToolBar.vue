@@ -130,8 +130,8 @@ onUnmounted(() => {
   background: #0f0f23;
   color: #e0e0e0;
   border: 1px solid #2a2a4a;
-  border-radius: 8px;
-  padding: 5px 10px;
+  border-radius: 10px;
+  padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
   min-width: 120px;
@@ -179,8 +179,8 @@ onUnmounted(() => {
   overflow-y: auto;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   padding: 4px;
   z-index: 100;
   animation: dropdownIn 0.12s ease;
@@ -206,7 +206,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 7px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s;
   gap: 8px;
@@ -247,7 +247,7 @@ onUnmounted(() => {
   font-family: monospace;
   background: #0f0f23;
   padding: 3px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid #2a2a4a;
   margin-right: 6px;
 }
@@ -264,7 +264,7 @@ onUnmounted(() => {
   color: #888;
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   transition: color 0.15s, background 0.15s, transform 0.12s;

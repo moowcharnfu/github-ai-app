@@ -64,7 +64,7 @@ function handleClose(id) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 14px;
   min-width: 0;
   max-width: 200px;
   height: 100%;
@@ -72,7 +72,7 @@ function handleClose(id) {
   border-right: 1px solid #2a2a4a;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.2s ease, border-color 0.2s ease;
   flex-shrink: 0;
 }
 
@@ -83,6 +83,7 @@ function handleClose(id) {
 .tab.active {
   background: #1a1a2e;
   border-bottom: 2px solid #4a9eff;
+  border-radius: 12px 12px 0 0;
 }
 
 .tab-title {
@@ -109,7 +110,7 @@ function handleClose(id) {
   font-size: 11px;
   cursor: pointer;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: 8px;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s, transform 0.1s;
@@ -140,11 +141,13 @@ function handleClose(id) {
 }
 
 .tab-add {
-  width: 38px;
-  height: 100%;
-  background: none;
-  border: none;
-  border-left: 1px solid #2a2a4a;
+  width: 34px;
+  height: 30px;
+  margin: 0 10px 0 6px;
+  align-self: center;
+  background: #171732;
+  border: 1px solid #2a2a4a;
+  border-radius: 12px;
   color: #888;
   font-size: 20px;
   font-weight: 300;
@@ -153,15 +156,20 @@ function handleClose(id) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.12s ease;
+}
+
+.tab-add:active {
+  transform: scale(0.92);
 }
 
 .tab-add:hover {
-  background: #1a1a3e;
+  background: #1f1f46;
+  border-color: #3a5a8a;
   color: #4a9eff;
 }
 
 .tab-add:active {
-  background: #252550;
+  background: #252556;
 }
 </style>

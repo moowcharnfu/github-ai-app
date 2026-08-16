@@ -233,7 +233,7 @@ onUnmounted(() => {
   max-height: 90vh;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
-  border-radius: 12px;
+  border-radius: 18px;
   overflow: hidden;
   position: relative;
 }
@@ -249,7 +249,7 @@ onUnmounted(() => {
   color: #888;
   font-size: 14px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,7 +295,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
   margin-bottom: 2px;
@@ -323,7 +323,7 @@ onUnmounted(() => {
   color: #4a9eff;
   background: #0f2340;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   margin-left: 6px;
   flex-shrink: 0;
 }
@@ -367,12 +367,13 @@ onUnmounted(() => {
   align-items: center;
   background: #0f0f23;
   border: 1px solid #2a2a4a;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: border-color 0.2s;
 }
 
 .input-inner:focus-within {
   border-color: #4a9eff;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.12);
 }
 
 .input-inner input {
@@ -396,7 +397,7 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 4px 6px;
   margin: 2px;
-  border-radius: 4px;
+  border-radius: 8px;
   transition: color 0.15s, background 0.15s;
   flex-shrink: 0;
 }
@@ -426,7 +427,7 @@ onUnmounted(() => {
 .btn {
   padding: 8px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;

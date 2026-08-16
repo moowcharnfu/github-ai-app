@@ -24,7 +24,7 @@ html, body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -32,12 +32,16 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a4a;
-  border-radius: 3px;
+  background: #2e2e52;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a5a;
+  background: #3a3a62;
+  background-clip: padding-box;
+  border: 1px solid transparent;
 }
 
 /* Prevent textarea from showing browser default resize */
