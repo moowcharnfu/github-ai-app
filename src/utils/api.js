@@ -55,6 +55,11 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${apiKey}`
   }
+  if (!apiKey) {
+    const err = new Error('API 密钥为空')
+    err.name = 'InvalidConfigError'
+    throw err
+  }
   if (useStream) headers['Accept'] = 'text/event-stream'
 
   const fetch = await resolveFetch()
@@ -112,6 +117,7 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
   let fullContent = ''
   let buffer = ''
   let eventData = ''
+  let completed = false
 
   function flushEvent() {
     if (!eventData || eventData === '[DONE]') {
@@ -134,7 +140,7 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) { completed = true; break }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -153,12 +159,17 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
     }
 
     // process remaining buffer
+    buffer += decoder.decode()  // flush decoder's internal multibyte buffer
     const tailData = parseSseDataLine(buffer)
     if (tailData !== null) {
       eventData = eventData ? eventData + '\n' + tailData : tailData
     }
     flushEvent()
   } finally {
+    // On interruption (abort/timeout), cancel the stream to release the connection
+    if (!completed) {
+      try { await reader.cancel() } catch { /* ignore */ }
+    }
     try { reader.releaseLock() } catch { /* ignore */ }
   }
 

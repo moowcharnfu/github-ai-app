@@ -97,6 +97,7 @@ const isStreaming = ref(false)
 const currentReply = ref(null)
 const pendingImage = ref(null)
 let abortController = null
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 const activeSession = store.activeSession
@@ -159,6 +160,10 @@ async function pickImage() {
 
   try {
     const bytes = await readFile(selected)
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      showError('图片过大，请选择 10MB 以内的图片')
+      return
+    }
     const base64 = arrayToBase64(new Uint8Array(bytes))
     const mimeType = selected.match(/\.png$/i) ? 'image/png' : 'image/jpeg'
     pendingImage.value = { data: base64, mimeType }
@@ -174,6 +179,10 @@ function pickImageBrowser() {
   input.onchange = () => {
     const file = input.files && input.files[0]
     if (!file) return
+    if (file.size > MAX_IMAGE_BYTES) {
+      showError('图片过大，请选择 10MB 以内的图片')
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       const result = reader.result
@@ -185,6 +194,7 @@ function pickImageBrowser() {
     reader.onerror = () => showError('读取图片失败')
     reader.readAsDataURL(file)
   }
+  input.addEventListener('change', () => { input.value = '' }, { once: true })
   input.click()
 }
 
@@ -219,21 +229,19 @@ async function send() {
   }
 
   const draftedText = inputText.value
+  const draftedImage = pendingImage.value
   inputText.value = ''
 
   const msgData = { id: generateMessageId('user'), role: 'user', content: text || '[图片]', timestamp: Date.now() }
-  if (pendingImage.value) {
-    msgData.images = [pendingImage.value]
+  if (draftedImage) {
+    msgData.images = [draftedImage]
   }
   store.addMessage(session.id, msgData)
-  pendingImage.value = null
 
-  // 仅最新用户消息保留 images 字段，避免历史图片污染后续请求
-  const lastUserIdx = [...session.messages].reverse().findIndex(m => m.role === 'user')
-  const keepImagesIdx = lastUserIdx === -1 ? -1 : session.messages.length - 1 - lastUserIdx
-  const requestMessages = session.messages.map((m, i) => {
+  // 所有携带图片的用户消息都保留，支持多轮视觉对话
+  const requestMessages = session.messages.map((m) => {
     const msg = { role: m.role, content: m.content }
-    if (i === keepImagesIdx && m.images?.length) {
+    if (m.role === 'user' && m.images?.length) {
       msg.images = m.images
     }
     return msg
@@ -253,6 +261,7 @@ async function send() {
   abortController = new AbortController()
   const requestStart = Date.now()
   latestContent = ''
+  let success = false
 
   try {
     await sendChatMessage({
@@ -284,6 +293,7 @@ async function send() {
       })
       currentReply.value = null
       inputText.value = ''
+      success = true
     } else {
       showError('收到空回复')
       currentReply.value = null
@@ -317,6 +327,7 @@ async function send() {
       if (activeSession.value?.id === session.id) inputText.value = draftedText
     } else {
       // Streaming failed, fallback to non-streaming
+      showError('流式请求失败，正在重试...')
       if (!abortController) abortController = new AbortController()
       try {
         const result = await sendChatMessage({
@@ -340,6 +351,7 @@ async function send() {
           })
           currentReply.value = null
           inputText.value = ''
+          success = true
         } else {
           showError('收到空回复')
           currentReply.value = null
@@ -367,6 +379,12 @@ async function send() {
   isLoading.value = false
   isStreaming.value = false
   abortController = null
+  // 成功则清空图片，失败则恢复待发送图片
+  if (success) {
+    pendingImage.value = null
+  } else if (draftedImage) {
+    pendingImage.value = draftedImage
+  }
   scrollToBottom()
   nextTick(() => inputRef.value?.focus())
 }

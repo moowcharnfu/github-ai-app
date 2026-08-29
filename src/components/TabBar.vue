@@ -11,29 +11,45 @@
         <span class="tab-title">{{ session.title }}</span>
         <button
           class="tab-close"
-          :class="{ disabled: store.sessions.length <= 1 }"
+          :class="{ disabled: store.sessions.length <= 1, confirm: pendingId === session.id }"
           :disabled="store.sessions.length <= 1"
           @click.stop="handleClose(session.id)"
-          title="关闭会话"
+          :title="pendingId === session.id ? '再点一次确认关闭' : '关闭会话'"
         >
           &#10005;
         </button>
       </div>
     </div>
-    <button class="tab-add" @click="store.createSession()" title="新建会话">+</button>
+    <button class="tab-add" @click="store.createSession()" title="新建会话" aria-label="新建会话">+</button>
   </div>
 </template>
 
 <script setup>
+import { ref, onUnmounted } from 'vue'
 import { useSessionStore } from '../stores/sessionStore.js'
 
 const store = useSessionStore()
 const currentId = store.activeId
+const pendingId = ref(null)
+let pendingTimer = null
 
 function handleClose(id) {
   if (store.sessions.length <= 1) return
-  store.deleteSession(id)
+  if (pendingId.value === id) {
+    clearTimeout(pendingTimer)
+    pendingTimer = null
+    pendingId.value = null
+    store.deleteSession(id)
+    return
+  }
+  pendingId.value = id
+  clearTimeout(pendingTimer)
+  pendingTimer = setTimeout(() => { pendingId.value = null }, 3000)
 }
+
+onUnmounted(() => {
+  clearTimeout(pendingTimer)
+})
 </script>
 
 <style scoped>
@@ -131,6 +147,18 @@ function handleClose(id) {
 .tab-close.disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.tab-close.confirm {
+  opacity: 1;
+  color: #ff4a4a;
+  background: #2a1a1a;
+  animation: pulse-red 1s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 74, 74, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 74, 74, 0); }
 }
 
 @media (pointer: coarse) {

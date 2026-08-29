@@ -46,7 +46,8 @@
             </div>
           </div>
           <div class="form-field">
-            <label>密钥（仅本次运行保存）</label>
+            <label>密钥（本地持久化保存）</label>
+            <span class="security-hint">⚠ 以明文存储于本机，请勿在共享设备使用</span>
             <div class="input-inner">
               <input v-model="form.apiKey" :type="showKey ? 'text' : 'password'" placeholder="Bearer Token" />
               <button class="input-btn" @click="showKey = !showKey" :title="showKey ? '隐藏' : '显示'">
@@ -83,7 +84,9 @@
         </div>
         <div v-if="formError" class="form-error">{{ formError }}</div>
         <div class="form-actions">
-          <button class="btn btn-save" @click="handleSave">保存</button>
+          <button class="btn btn-save" :class="{ saved: savedFlag }" @click="handleSave">
+            {{ savedFlag ? '已保存 ✓' : '保存' }}
+          </button>
           <button class="btn btn-new" @click="handleNew">新建</button>
           <button class="btn btn-delete" :class="{ 'btn-delete-confirm': pendingDelete }" @click="handleDelete">{{ pendingDelete ? '确认删除?' : '删除' }}</button>
         </div>
@@ -99,6 +102,7 @@ import { useProfileStore } from '../stores/configProfileStore.js'
 const pendingDelete = ref(false)
 let deleteTimer = null
 let copyTimer = null
+let saveTimer = null
 
 const props = defineProps({
   visible: Boolean
@@ -113,6 +117,7 @@ const form = ref({ name: '', apiUrl: '', apiKey: '', model: '' })
 const showKey = ref(false)
 const copiedField = ref(null)
 const formError = ref('')
+const savedFlag = ref(false)
 
 function onKeydown(e) {
   if (e.key === 'Escape' && props.visible) emit('close')
@@ -129,6 +134,7 @@ watch(() => props.visible, (val) => {
     showKey.value = false
     copiedField.value = null
     pendingDelete.value = false
+    savedFlag.value = false
     formError.value = ''
   }
 })
@@ -146,6 +152,7 @@ function selectProfile(id) {
   showKey.value = false
   copiedField.value = null
   pendingDelete.value = false
+  savedFlag.value = false
   formError.value = ''
 }
 
@@ -159,6 +166,9 @@ function handleSave() {
   formError.value = ''
   store.updateProfile(selectedId.value, { name, apiUrl, apiKey: form.value.apiKey, model })
   pendingDelete.value = false
+  savedFlag.value = true
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => { savedFlag.value = false }, 1500)
 }
 
 function handleNew() {
@@ -169,6 +179,7 @@ function handleNew() {
   showKey.value = false
   copiedField.value = null
   pendingDelete.value = false
+  savedFlag.value = false
   formError.value = ''
 }
 
@@ -189,6 +200,7 @@ function handleDelete() {
   showKey.value = false
   copiedField.value = null
   formError.value = ''
+  savedFlag.value = false
 }
 
 async function copyField(field) {
@@ -212,6 +224,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   clearTimeout(deleteTimer)
   clearTimeout(copyTimer)
+  clearTimeout(saveTimer)
 })
 </script>
 
@@ -362,6 +375,15 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
 }
 
+.security-hint {
+  display: block;
+  font-size: 10px;
+  color: #b8853a;
+  margin-top: 2px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .input-inner {
   display: flex;
   align-items: center;
@@ -448,6 +470,11 @@ onUnmounted(() => {
 .btn-save:hover {
   background: linear-gradient(135deg, #5aaeff, #4a8eff);
   box-shadow: 0 3px 10px rgba(74, 158, 255, 0.35);
+}
+
+.btn-save.saved {
+  background: linear-gradient(135deg, #4cc38a, #3aa874);
+  box-shadow: 0 3px 10px rgba(76, 195, 138, 0.35);
 }
 
 .btn-new {

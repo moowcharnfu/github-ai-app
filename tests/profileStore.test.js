@@ -10,7 +10,7 @@ function setupStorage(initial = {}) {
 }
 
 describe('profile store', () => {
-  it('加载历史配置时清除持久化的 apiKey', async () => {
+  it('加载历史配置时保留持久化的 apiKey', async () => {
     vi.resetModules()
     setupStorage({
       'github-ai-chat:config-profiles': JSON.stringify([
@@ -22,10 +22,10 @@ describe('profile store', () => {
     const { useProfileStore } = await import('../src/stores/configProfileStore.js')
     const store = useProfileStore()
 
-    expect(store.profiles[0].apiKey).toBe('')
+    expect(store.profiles[0].apiKey).toBe('sk-stored')
   })
 
-  it('apiKey 仅保存在内存，不写入存储', async () => {
+  it('apiKey 更新后写入存储持久化保存', async () => {
     vi.resetModules()
     setupStorage({
       'github-ai-chat:config-profiles': JSON.stringify([
@@ -41,7 +41,7 @@ describe('profile store', () => {
     expect(store.profiles[0].apiKey).toBe('sk-live')
 
     const persisted = JSON.parse(localStorage.getItem('github-ai-chat:config-profiles'))
-    expect(persisted[0]).not.toHaveProperty('apiKey')
-    expect(JSON.stringify(persisted)).not.toContain('sk-live')
+    expect(persisted[0].apiKey).toBe('sk-live')
+    expect(JSON.stringify(persisted)).toContain('sk-live')
   })
 })

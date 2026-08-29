@@ -5,9 +5,9 @@
       <span class="app-name">GitHub AI Chat</span>
     </div>
     <div class="title-bar-right">
-      <button class="window-btn" title="最小化" @click="minimize">&#9472;</button>
-      <button class="window-btn" title="最大化" @click="toggleMaximize">&#9634;</button>
-      <button class="window-btn window-close" title="关闭" @click="closeWindow">&#10005;</button>
+      <button class="window-btn" title="最小化" aria-label="最小化" @click="minimize">&#9472;</button>
+      <button class="window-btn" title="最大化" aria-label="最大化" @click="toggleMaximize">&#9634;</button>
+      <button class="window-btn window-close" title="关闭" aria-label="关闭" @click="closeWindow">&#10005;</button>
     </div>
   </div>
 </template>

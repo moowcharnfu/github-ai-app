@@ -18,6 +18,8 @@ const initialActiveId = storedActiveId && sessions.find(s => s.id === storedActi
   : (sessions.length > 0 ? sessions[0].id : null)
 const activeId = shallowRef(initialActiveId)
 const persistFailed = ref(false)
+const PERSIST_DEBOUNCE = 300
+let persistTimer = null
 
 function persist() {
   const ok = setItem('chat-sessions', sessions.map(s => ({
@@ -29,6 +31,24 @@ function persist() {
   if (!ok) {
     try { window.dispatchEvent(new CustomEvent('chat:storage-quota')) } catch { /* ignore */ }
   }
+}
+
+function flushPersist() {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  persist()
+}
+
+function schedulePersist() {
+  clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => { persistTimer = null; persist() }, PERSIST_DEBOUNCE)
+}
+
+// Flush pending writes when the app is about to close/hide
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushPersist)
 }
 
 export function useSessionStore() {
@@ -47,7 +67,7 @@ export function useSessionStore() {
     sessions.unshift(session)
     activeId.value = session.id
     setItem('active-session-id', session.id)
-    persist()
+    schedulePersist()
     return session
   }
 
@@ -65,7 +85,7 @@ export function useSessionStore() {
       activeId.value = sessions.length > 0 ? sessions[0].id : null
       if (activeId.value) setItem('active-session-id', activeId.value)
     }
-    persist()
+    schedulePersist()
   }
 
   function addMessage(sessionId, message) {
@@ -85,7 +105,7 @@ export function useSessionStore() {
           ? '📷 图片'
           : '消息'
     }
-    persist()
+    schedulePersist()
   }
 
   function ensureActiveSession() {

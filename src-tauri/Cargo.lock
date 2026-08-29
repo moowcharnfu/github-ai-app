@@ -1152,7 +1152,6 @@ name = "github-ai-chat"
 version = "1.0.0"
 dependencies = [
  "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

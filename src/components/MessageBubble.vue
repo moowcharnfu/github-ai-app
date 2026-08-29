@@ -95,40 +95,29 @@ onUnmounted(() => {
 
 const segments = computed(() => {
   const content = (props.message.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  if (!content) return [{ type: 'text', content: '' }]
+
+  // Lightweight single-pass split on ```, avoids O(n) backtracking regex on every streaming token
   const parts = []
-  let lastEnd = 0
-  const codeRegex = /```(\w*)\n?([\s\S]*?)```/g
-  let match
-
-  while ((match = codeRegex.exec(content)) !== null) {
-    if (match.index > lastEnd) {
-      parts.push({ type: 'text', content: content.slice(lastEnd, match.index) })
-    }
-    parts.push({ type: 'code', content: match[2], language: match[1] || '' })
-    lastEnd = match.index + match[0].length
-  }
-
-  if (lastEnd < content.length) {
-    const remaining = content.slice(lastEnd)
-    const fenceIdx = remaining.indexOf('```')
-    if (fenceIdx !== -1) {
-      // Incomplete code block (streaming)
-      if (fenceIdx > 0) {
-        parts.push({ type: 'text', content: remaining.slice(0, fenceIdx) })
-      }
-      let afterFence = remaining.slice(fenceIdx + 3)
-      const nlIdx = afterFence.indexOf('\n')
-      if (nlIdx !== -1) {
-        afterFence = afterFence.slice(nlIdx + 1)
-      } else {
-        afterFence = ''
-      }
-      parts.push({ type: 'code', content: afterFence })
+  const chunks = content.split('```')
+  for (let i = 0; i < chunks.length; i++) {
+    if (i % 2 === 0) {
+      if (chunks[i]) parts.push({ type: 'text', content: chunks[i] })
     } else {
-      parts.push({ type: 'text', content: remaining })
+      // Code block — first line may be language tag
+      let codeContent = chunks[i]
+      let language = ''
+      const nlIdx = codeContent.indexOf('\n')
+      if (nlIdx !== -1) {
+        const firstLine = codeContent.slice(0, nlIdx).trim()
+        if (/^\w+$/.test(firstLine)) {
+          language = firstLine
+          codeContent = codeContent.slice(nlIdx + 1)
+        }
+      }
+      parts.push({ type: 'code', content: codeContent, language })
     }
   }
-
   return parts.length > 0 ? parts : [{ type: 'text', content }]
 })
 </script>
@@ -242,6 +231,13 @@ const segments = computed(() => {
   opacity: 1;
   color: #6ee7a0;
   border-color: #2f6a4a;
+}
+
+@media (pointer: coarse) {
+  .copy-btn {
+    opacity: 0.8;
+    transform: translateY(0);
+  }
 }
 
 .text-block {
