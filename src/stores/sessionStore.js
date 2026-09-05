@@ -1,39 +1,67 @@
 import { reactive, computed, shallowRef, ref } from 'vue'
-import { getItem, setItem } from '../utils/storage.js'
+import { getItem, setItem, removeItem } from '../utils/storage.js'
+import { generateId } from '../utils/id.js'
 
-function generateId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+const SESSIONS_KEY = 'chat-sessions'
+
+function sessionKey(id) {
+  return 'chat-session:' + id
 }
 
-const sessions = reactive(
-  getItem('chat-sessions') || []
-)
+function stripImages(messages) {
+  return messages.map(({ images, ...rest }) => images?.length ? { ...rest, hadImages: true } : rest)
+}
+
+function loadSessions() {
+  const stored = getItem(SESSIONS_KEY)
+  if (!Array.isArray(stored)) return []
+  // 旧版单 key 格式：index 内含完整 messages → 迁移为每会话独立 key
+  if (stored.length > 0 && Array.isArray(stored[0].messages)) {
+    for (const s of stored) {
+      setItem(sessionKey(s.id), { messages: stripImages(s.messages || []) })
+    }
+    const index = stored.map(({ messages, ...meta }) => meta)
+    setItem(SESSIONS_KEY, index)
+    return stored
+  }
+  return stored.map(meta => ({
+    ...meta,
+    messages: getItem(sessionKey(meta.id))?.messages || []
+  }))
+}
+
+const sessions = reactive(loadSessions())
 
 const storedActiveId = getItem('active-session-id')
 const initialActiveId = storedActiveId && sessions.find(s => s.id === storedActiveId)
   ? storedActiveId
   : (sessions.length > 0 ? sessions[0].id : null)
 const activeId = shallowRef(initialActiveId)
-const persistFailed = ref(false)
+const persistFailCount = ref(0)
 const PERSIST_DEBOUNCE = 300
 let persistTimer = null
 
+// 脏会话跟踪：persist 时仅写有变更的会话，避免全量序列化
+const dirtySessionIds = new Set()
+const removedSessionIds = new Set()
+
 function persist() {
-  const ok = setItem('chat-sessions', sessions.map(s => ({
-    ...s,
-    // Strip base64 image data to avoid localStorage quota overflow
-    messages: s.messages.map(({ images, ...rest }) => images?.length ? { ...rest, hadImages: true } : rest)
-  })))
-  persistFailed.value = !ok
-  if (!ok) {
-    try { window.dispatchEvent(new CustomEvent('chat:storage-quota')) } catch { /* ignore */ }
+  let ok = setItem(SESSIONS_KEY, sessions.map(({ messages, ...meta }) => meta))
+  for (const id of removedSessionIds) {
+    if (!removeItem(sessionKey(id))) ok = false
   }
+  for (const id of dirtySessionIds) {
+    if (removedSessionIds.has(id)) continue
+    const session = sessions.find(s => s.id === id)
+    if (!session) continue
+    if (!setItem(sessionKey(id), { messages: stripImages(session.messages) })) ok = false
+  }
+  removedSessionIds.clear()
+  dirtySessionIds.clear()
+  if (!ok) persistFailCount.value++
 }
 
-function flushPersist() {
+export function flushPersist() {
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
@@ -67,6 +95,7 @@ export function useSessionStore() {
     sessions.unshift(session)
     activeId.value = session.id
     setItem('active-session-id', session.id)
+    dirtySessionIds.add(session.id)
     schedulePersist()
     return session
   }
@@ -81,6 +110,8 @@ export function useSessionStore() {
     if (idx === -1) return
 
     sessions.splice(idx, 1)
+    dirtySessionIds.delete(id)
+    removedSessionIds.add(id)
     if (activeId.value === id) {
       activeId.value = sessions.length > 0 ? sessions[0].id : null
       if (activeId.value) setItem('active-session-id', activeId.value)
@@ -105,6 +136,7 @@ export function useSessionStore() {
           ? '📷 图片'
           : '消息'
     }
+    dirtySessionIds.add(sessionId)
     schedulePersist()
   }
 
@@ -119,7 +151,7 @@ export function useSessionStore() {
     sessions,
     activeId: computed(() => activeSession.value?.id || null),
     activeSession,
-    persistFailed: computed(() => persistFailed.value),
+    persistFailCount: computed(() => persistFailCount.value),
     createSession,
     switchSession,
     deleteSession,

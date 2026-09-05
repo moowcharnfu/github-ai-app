@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -84,8 +84,13 @@ function onKeydown(e) {
   }
 }
 
-onMounted(() => {
-  document.addEventListener('keydown', onKeydown)
+// 仅在 lightbox 打开期间注册全局按键监听，避免每条消息常驻一个监听器
+watch(lightboxImg, (img) => {
+  if (img) {
+    document.addEventListener('keydown', onKeydown)
+  } else {
+    document.removeEventListener('keydown', onKeydown)
+  }
 })
 
 onUnmounted(() => {
@@ -110,7 +115,7 @@ const segments = computed(() => {
       const nlIdx = codeContent.indexOf('\n')
       if (nlIdx !== -1) {
         const firstLine = codeContent.slice(0, nlIdx).trim()
-        if (/^\w+$/.test(firstLine)) {
+        if (/^[\w+#.-]+$/.test(firstLine)) {
           language = firstLine
           codeContent = codeContent.slice(nlIdx + 1)
         }

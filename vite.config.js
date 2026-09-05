@@ -8,5 +8,8 @@ export default defineConfig({
     strictPort: true,
     open: false
   },
-  clearScreen: false
+  clearScreen: false,
+  test: {
+    include: ['tests/**/*.test.js']
+  }
 })

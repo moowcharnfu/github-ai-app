@@ -9,11 +9,12 @@
             v-for="profile in store.profiles"
             :key="profile.id"
             class="profile-item"
-            :class="{ active: selectedId === profile.id }"
+            :class="{ active: selectedId === profile.id, 'switch-confirm': pendingSwitch === profile.id }"
             @click="selectProfile(profile.id)"
           >
             <span class="profile-name">{{ profile.name }}</span>
-            <span v-if="profile.id === currentId" class="current-badge">当前</span>
+            <span v-if="pendingSwitch === profile.id" class="switch-hint">再点确认</span>
+            <span v-else-if="profile.id === currentId" class="current-badge">当前</span>
           </div>
         </div>
       </div>
@@ -87,7 +88,9 @@
           <button class="btn btn-save" :class="{ saved: savedFlag }" @click="handleSave">
             {{ savedFlag ? '已保存 ✓' : '保存' }}
           </button>
-          <button class="btn btn-new" @click="handleNew">新建</button>
+          <button class="btn btn-new" :class="{ 'btn-new-confirm': pendingSwitch === 'new' }" @click="handleNew">
+            {{ pendingSwitch === 'new' ? '确认新建?' : '新建' }}
+          </button>
           <button class="btn btn-delete" :class="{ 'btn-delete-confirm': pendingDelete }" @click="handleDelete">{{ pendingDelete ? '确认删除?' : '删除' }}</button>
         </div>
       </div>
@@ -100,7 +103,9 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useProfileStore } from '../stores/configProfileStore.js'
 
 const pendingDelete = ref(false)
+const pendingSwitch = ref(null)
 let deleteTimer = null
+let switchTimer = null
 let copyTimer = null
 let saveTimer = null
 
@@ -144,9 +149,39 @@ function loadForm(id) {
   if (profile) {
     form.value = { name: profile.name, apiUrl: profile.apiUrl, apiKey: profile.apiKey, model: profile.model }
   }
+  pendingSwitch.value = null
+  clearTimeout(switchTimer)
+  switchTimer = null
+}
+
+// 表单与已保存 profile 的差异（trim 后比较，保存时已 trim）
+const isFormDirty = computed(() => {
+  const profile = store.profiles.find(p => p.id === selectedId.value)
+  if (!profile) return false
+  return form.value.name.trim() !== profile.name
+    || form.value.apiUrl.trim() !== profile.apiUrl
+    || form.value.model.trim() !== profile.model
+    || form.value.apiKey !== profile.apiKey
+})
+
+// 有未保存修改时切换/新建需二次确认（应用内两步，避免依赖 WebView 原生 confirm）
+function requestSwitch(target) {
+  if (!isFormDirty.value) return true
+  if (pendingSwitch.value === target) {
+    clearTimeout(switchTimer)
+    switchTimer = null
+    pendingSwitch.value = null
+    return true
+  }
+  pendingSwitch.value = target
+  clearTimeout(switchTimer)
+  switchTimer = setTimeout(() => { pendingSwitch.value = null }, 3000)
+  return false
 }
 
 function selectProfile(id) {
+  if (id === selectedId.value) return
+  if (!requestSwitch(id)) return
   selectedId.value = id
   loadForm(id)
   showKey.value = false
@@ -164,6 +199,9 @@ function handleSave() {
   if (!apiUrl || !/^https?:\/\//i.test(apiUrl)) { formError.value = '请填写有效的 API 地址'; return }
   if (!model) { formError.value = '请填写模型'; return }
   formError.value = ''
+  pendingSwitch.value = null
+  clearTimeout(switchTimer)
+  switchTimer = null
   store.updateProfile(selectedId.value, { name, apiUrl, apiKey: form.value.apiKey, model })
   pendingDelete.value = false
   savedFlag.value = true
@@ -172,6 +210,7 @@ function handleSave() {
 }
 
 function handleNew() {
+  if (!requestSwitch('new')) return
   const p = store.createProfile('新配置')
   store.switchProfile(p.id)
   selectedId.value = p.id
@@ -223,6 +262,7 @@ async function copyField(field) {
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   clearTimeout(deleteTimer)
+  clearTimeout(switchTimer)
   clearTimeout(copyTimer)
   clearTimeout(saveTimer)
 })
@@ -339,6 +379,21 @@ onUnmounted(() => {
   border-radius: 6px;
   margin-left: 6px;
   flex-shrink: 0;
+}
+
+.profile-item.switch-confirm {
+  background: #2a2214;
+}
+
+.switch-hint {
+  font-size: 10px;
+  color: #ffcc66;
+  background: #33290f;
+  padding: 1px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  animation: pulse-amber 1s infinite;
 }
 
 .modal-right {
@@ -485,6 +540,17 @@ onUnmounted(() => {
 .btn-new:hover {
   background: #3a3a5a;
   color: #ccc;
+}
+
+.btn-new-confirm {
+  background: #4a3a15;
+  color: #ffcc66;
+  animation: pulse-amber 1s infinite;
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 204, 102, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 204, 102, 0); }
 }
 
 .btn-delete {

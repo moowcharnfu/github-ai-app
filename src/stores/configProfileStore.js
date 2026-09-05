@@ -1,14 +1,18 @@
 import { reactive, computed, ref } from 'vue'
 import { getItem, setItem, removeItem } from '../utils/storage.js'
+import { generateId } from '../utils/id.js'
 
 const DEFAULT_API_URL = 'https://models.github.ai/inference/chat/completions'
 const DEFAULT_MODEL = 'openai/gpt-4o'
 
-function generateId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
+function createDefaultProfile(name, apiUrl, apiKey, model) {
+  return {
+    id: generateId(),
+    name: name || '默认配置',
+    apiUrl: apiUrl || DEFAULT_API_URL,
+    apiKey: apiKey || '',
+    model: model || DEFAULT_MODEL,
   }
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
 }
 
 function loadProfiles() {
@@ -20,31 +24,17 @@ function loadProfiles() {
   // Migrate from old config
   const oldConfig = getItem('app-config')
   if (oldConfig && (oldConfig.apiKey || oldConfig.apiUrl)) {
-    const defaultProfile = {
-      id: generateId(),
-      name: '默认配置',
-      apiUrl: oldConfig.apiUrl || DEFAULT_API_URL,
-      apiKey: oldConfig.apiKey || '',
-      model: oldConfig.model || DEFAULT_MODEL,
-    }
-    const result = [defaultProfile]
+    const result = [createDefaultProfile('默认配置', oldConfig.apiUrl, oldConfig.apiKey, oldConfig.model)]
     setItem('config-profiles', result)
-    setItem('active-profile-id', defaultProfile.id)
+    setItem('active-profile-id', result[0].id)
     removeItem('app-config')
     return result
   }
 
   // First launch: create default
-  const defaultProfile = {
-    id: generateId(),
-    name: '默认配置',
-    apiUrl: DEFAULT_API_URL,
-    apiKey: '',
-    model: DEFAULT_MODEL,
-  }
-  const result = [defaultProfile]
+  const result = [createDefaultProfile()]
   setItem('config-profiles', result)
-  setItem('active-profile-id', defaultProfile.id)
+  setItem('active-profile-id', result[0].id)
   return result
 }
 

@@ -33,7 +33,10 @@ export function parseSseDataLine(line) {
   return trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5)
 }
 
-export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal, onToken, timeout = 120000 }) {
+export async function sendChatMessage({
+  apiUrl, apiKey, model, messages, signal, onToken,
+  timeout = 120000, temperature = 1, maxTokens = 4096, topP = 1
+}) {
   const useStream = !!onToken
 
   if (!model) {
@@ -41,24 +44,24 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     err.name = 'InvalidConfigError'
     throw err
   }
+  if (!apiKey) {
+    const err = new Error('API 密钥为空')
+    err.name = 'InvalidConfigError'
+    throw err
+  }
 
   const body = {
     model,
     messages: messages.map(toApiMessage),
-    temperature: 1,
-    max_tokens: 4096,
-    top_p: 1,
+    temperature,
+    max_tokens: maxTokens,
+    top_p: topP,
     stream: useStream
   }
 
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${apiKey}`
-  }
-  if (!apiKey) {
-    const err = new Error('API 密钥为空')
-    err.name = 'InvalidConfigError'
-    throw err
   }
   if (useStream) headers['Accept'] = 'text/event-stream'
 
@@ -86,8 +89,13 @@ export async function sendChatMessage({ apiUrl, apiKey, model, messages, signal,
     }
   } catch (err) {
     if (timedOut) throw new TimeoutError()
-    if (err.name === 'AbortError' && signal?.aborted) throw err
-    if (err.name === 'AbortError') throw new TimeoutError()
+    if (signal?.aborted) {
+      // 归一化中断错误：Tauri plugin-http 的 abort 错误名可能不是 AbortError
+      if (err.name === 'AbortError') throw err
+      const abortErr = new Error(err.message || '请求已中断')
+      abortErr.name = 'AbortError'
+      throw abortErr
+    }
     throw err
   } finally {
     clearTimeout(timeoutId)
@@ -124,17 +132,24 @@ async function sendStreamingRequest(fetch, url, headers, body, signal, onToken) 
       eventData = ''
       return
     }
+    let parsed
     try {
-      const parsed = JSON.parse(eventData)
-      const delta = parsed.choices?.[0]?.delta?.content
-      if (delta) {
-        fullContent += delta
-        onToken(delta, fullContent)
-      }
+      parsed = JSON.parse(eventData)
     } catch {
       // skip malformed JSON chunks
+      eventData = ''
+      return
     }
     eventData = ''
+    // 部分兼容网关出错时返回 200 + JSON 错误体，需透出真实原因
+    if (parsed && typeof parsed === 'object' && parsed.error) {
+      throw new Error(`API 错误: ${apiErrorMessage(parsed.error)}`)
+    }
+    const delta = parsed.choices?.[0]?.delta?.content
+    if (delta) {
+      fullContent += delta
+      onToken(delta, fullContent)
+    }
   }
 
   try {
@@ -194,8 +209,21 @@ async function sendRegularRequest(fetch, url, headers, body, signal) {
   const text = await response.text().catch(() => '')
   if (!text) return ''
 
-  const json = JSON.parse(text)
+  let json
+  try {
+    json = JSON.parse(text)
+  } catch {
+    throw new Error('响应格式异常（非 JSON）')
+  }
+  if (json && typeof json === 'object' && json.error) {
+    throw new Error(`API 错误: ${apiErrorMessage(json.error)}`)
+  }
   return json.choices?.[0]?.message?.content || ''
+}
+
+function apiErrorMessage(error) {
+  if (typeof error === 'string') return error
+  return error?.message || '未知错误'
 }
 
 // ── Message format conversion ──

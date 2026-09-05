@@ -4,6 +4,8 @@ chat
 
 # Claude Code
 .claude/
+AGENTS.md
+CLAUDE.md
 
 # Build output
 dist/

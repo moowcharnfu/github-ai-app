@@ -22,7 +22,7 @@
           :streaming="false"
         />
         <MessageBubble
-          v-if="currentReply"
+          v-if="isViewingReplySession"
           :message="currentReply"
           :streaming="isStreaming"
         />
@@ -56,7 +56,7 @@
             :disabled="isLoading"
           />
           <button
-            v-if="isStreaming"
+            v-if="isStreaming && isViewingReplySession"
             class="stop-btn"
             @click="stopGeneration"
             title="停止生成"
@@ -80,10 +80,11 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 import { useSessionStore } from '../stores/sessionStore.js'
 import { useConfig } from '../stores/configStore.js'
 import { sendChatMessage } from '../utils/api.js'
+import { generateId } from '../utils/id.js'
 import MessageBubble from './MessageBubble.vue'
 
 const store = useSessionStore()
@@ -102,17 +103,16 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 const activeSession = store.activeSession
 
+// 后台生成：切换会话不中断请求，流式气泡仅在生成所属会话中显示
+const replySessionId = ref(null)
+const isViewingReplySession = computed(() => {
+  return !!currentReply.value && replySessionId.value === activeSession.value?.id
+})
+
 const errorMsg = ref('')
 let errorTimer = null
 let latestContent = ''
 let streamRaf = null
-
-function generateMessageId(role) {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return Date.now().toString(36) + '-' + role + '-' + Math.random().toString(36).slice(2, 10)
-}
 
 function showError(msg) {
   errorMsg.value = msg
@@ -160,14 +160,15 @@ async function pickImage() {
 
   try {
     const bytes = await readFile(selected)
-    if (bytes.length > MAX_IMAGE_BYTES) {
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+    if (data.length > MAX_IMAGE_BYTES) {
       showError('图片过大，请选择 10MB 以内的图片')
       return
     }
-    const base64 = arrayToBase64(new Uint8Array(bytes))
+    const base64 = arrayToBase64(data)
     const mimeType = selected.match(/\.png$/i) ? 'image/png' : 'image/jpeg'
     pendingImage.value = { data: base64, mimeType }
-  } catch (e) {
+  } catch {
     showError('读取图片失败')
   }
 }
@@ -200,24 +201,54 @@ function pickImageBrowser() {
 
 function arrayToBase64(arr) {
   const chunkSize = 8192
-  let result = ''
+  const parts = []
   for (let i = 0; i < arr.length; i += chunkSize) {
     const chunk = arr.subarray(i, i + chunkSize)
-    result += String.fromCharCode(...chunk)
+    parts.push(String.fromCharCode(...chunk))
   }
-  return btoa(result)
+  return btoa(parts.join(''))
 }
 
 function removeImage() {
   pendingImage.value = null
 }
 
+// 保存 AI 回复并关闭流式气泡
+function persistAssistantReply(sessionId, replyId, content, requestStart) {
+  store.addMessage(sessionId, {
+    id: replyId,
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
+  })
+  currentReply.value = null
+}
+
+function restoreDraft(sessionId, text) {
+  if (activeSession.value?.id === sessionId) inputText.value = text
+}
+
+// 仅保留最近一条携带图片的用户消息，避免多轮对话重发全部 base64 图片
+function buildRequestMessages(session) {
+  let imageIdx = -1
+  for (let i = session.messages.length - 1; i >= 0; i--) {
+    const m = session.messages[i]
+    if (m.role === 'user' && m.images?.length) {
+      imageIdx = i
+      break
+    }
+  }
+  return session.messages.map((m, i) => {
+    const msg = { role: m.role, content: m.content }
+    if (i === imageIdx) msg.images = m.images
+    return msg
+  })
+}
+
 async function send() {
   const text = inputText.value.trim()
   if ((!text && !pendingImage.value) || isLoading.value) return
-
-  const session = store.ensureActiveSession()
-  if (!session) return
 
   if (!config.apiKey) {
     showError('请先在顶部配置 API 密钥')
@@ -228,26 +259,22 @@ async function send() {
     return
   }
 
+  const session = store.ensureActiveSession()
+  if (!session) return
+
   const draftedText = inputText.value
   const draftedImage = pendingImage.value
   inputText.value = ''
 
-  const msgData = { id: generateMessageId('user'), role: 'user', content: text || '[图片]', timestamp: Date.now() }
+  const msgData = { id: generateId('user'), role: 'user', content: text || '[图片]', timestamp: Date.now() }
   if (draftedImage) {
     msgData.images = [draftedImage]
   }
   store.addMessage(session.id, msgData)
 
-  // 所有携带图片的用户消息都保留，支持多轮视觉对话
-  const requestMessages = session.messages.map((m) => {
-    const msg = { role: m.role, content: m.content }
-    if (m.role === 'user' && m.images?.length) {
-      msg.images = m.images
-    }
-    return msg
-  })
+  const requestMessages = buildRequestMessages(session)
 
-  const replyId = generateMessageId('assistant')
+  const replyId = generateId('assistant')
   const replyMsg = {
     id: replyId,
     role: 'assistant',
@@ -255,6 +282,7 @@ async function send() {
     timestamp: Date.now()
   }
   currentReply.value = replyMsg
+  replySessionId.value = session.id
   isLoading.value = true
   isStreaming.value = true
 
@@ -263,115 +291,73 @@ async function send() {
   latestContent = ''
   let success = false
 
+  // 中断/超时/最终失败时：保存已有部分回复，恢复输入与待发图片
+  const saveIfPartial = () => {
+    if (latestContent) {
+      persistAssistantReply(session.id, replyId, latestContent, requestStart)
+    } else {
+      currentReply.value = null
+    }
+    restoreDraft(session.id, draftedText)
+  }
+
+  const buildRequest = (onToken, timeout) => ({
+    apiUrl: config.apiUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+    messages: requestMessages,
+    signal: abortController.signal,
+    onToken,
+    timeout
+  })
+
   try {
-    await sendChatMessage({
-      apiUrl: config.apiUrl,
-      apiKey: config.apiKey,
-      model: config.model,
-      messages: requestMessages,
-      signal: abortController.signal,
-      onToken: (delta, fullContent) => {
-        latestContent = fullContent
-        if (streamRaf) return
-        streamRaf = requestAnimationFrame(() => {
-          streamRaf = null
-          replyMsg.content = latestContent
-          scrollToBottom()
-        })
-      }
-    })
+    await sendChatMessage(buildRequest((delta, fullContent) => {
+      latestContent = fullContent
+      if (streamRaf) return
+      streamRaf = requestAnimationFrame(() => {
+        streamRaf = null
+        replyMsg.content = latestContent
+        // 仅在用户正查看生成会话时滚动，避免干扰其他 Tab 的阅读位置
+        if (isViewingReplySession.value) scrollToBottom(false)
+      })
+    }, 120000))
 
     if (streamRaf) { cancelAnimationFrame(streamRaf); streamRaf = null }
     replyMsg.content = latestContent
     if (latestContent) {
-      store.addMessage(session.id, {
-        id: replyId,
-        role: 'assistant',
-        content: latestContent,
-        timestamp: Date.now(),
-        elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-      })
-      currentReply.value = null
-      inputText.value = ''
+      persistAssistantReply(session.id, replyId, latestContent, requestStart)
       success = true
     } else {
       showError('收到空回复')
       currentReply.value = null
-      if (activeSession.value?.id === session.id) inputText.value = draftedText
+      restoreDraft(session.id, draftedText)
     }
   } catch (err) {
-    if (err.name === 'AbortError') {
-      if (latestContent) {
-        store.addMessage(session.id, {
-          id: replyId,
-          role: 'assistant',
-          content: latestContent,
-          timestamp: Date.now(),
-          elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-        })
-      }
-      currentReply.value = null
-      if (activeSession.value?.id === session.id) inputText.value = draftedText
-    } else if (err.name === 'TimeoutError') {
-      showError('请求超时')
-      if (latestContent) {
-        store.addMessage(session.id, {
-          id: replyId,
-          role: 'assistant',
-          content: latestContent,
-          timestamp: Date.now(),
-          elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-        })
-      }
-      currentReply.value = null
-      if (activeSession.value?.id === session.id) inputText.value = draftedText
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      if (err.name === 'TimeoutError') showError('请求超时')
+      saveIfPartial()
     } else {
-      // Streaming failed, fallback to non-streaming
+      // 流式失败 → 非流式重试；保持停止按钮可用
       showError('流式请求失败，正在重试...')
-      if (!abortController) abortController = new AbortController()
+      isStreaming.value = true
       try {
-        const result = await sendChatMessage({
-          apiUrl: config.apiUrl,
-          apiKey: config.apiKey,
-          model: config.model,
-          messages: requestMessages,
-          signal: abortController.signal,
-          onToken: null,
-          timeout: 30000
-        })
+        const result = await sendChatMessage(buildRequest(null, 30000))
         replyMsg.content = result
         latestContent = result
         if (latestContent) {
-          store.addMessage(session.id, {
-            id: replyId,
-            role: 'assistant',
-            content: latestContent,
-            timestamp: Date.now(),
-            elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-          })
-          currentReply.value = null
-          inputText.value = ''
+          persistAssistantReply(session.id, replyId, latestContent, requestStart)
           success = true
         } else {
           showError('收到空回复')
           currentReply.value = null
-          if (activeSession.value?.id === session.id) inputText.value = draftedText
+          restoreDraft(session.id, draftedText)
         }
       } catch (fallbackErr) {
         if (fallbackErr.name !== 'AbortError') {
           showError(`错误: ${fallbackErr.message}`)
         }
-        if (latestContent) {
-          store.addMessage(session.id, {
-            id: replyId,
-            role: 'assistant',
-            content: latestContent,
-            timestamp: Date.now(),
-            elapsed: ((Date.now() - requestStart) / 1000).toFixed(1)
-          })
-        }
-        currentReply.value = null
-        if (activeSession.value?.id === session.id) inputText.value = draftedText
+        saveIfPartial()
       }
     }
   }
@@ -379,14 +365,17 @@ async function send() {
   isLoading.value = false
   isStreaming.value = false
   abortController = null
-  // 成功则清空图片，失败则恢复待发送图片
+  replySessionId.value = null
+  // 成功则清空图片，失败则恢复待发送图片（仅仍在生成会话时）
   if (success) {
     pendingImage.value = null
-  } else if (draftedImage) {
+  } else if (draftedImage && activeSession.value?.id === session.id) {
     pendingImage.value = draftedImage
   }
-  scrollToBottom()
-  nextTick(() => inputRef.value?.focus())
+  if (activeSession.value?.id === session.id) {
+    scrollToBottom()
+    nextTick(() => inputRef.value?.focus())
+  }
 }
 
 function stopGeneration() {
@@ -396,25 +385,22 @@ function stopGeneration() {
   }
 }
 
-// Abort streaming if session changes during generation
-watch(activeSession, (newVal, oldVal) => {
-  if (isStreaming.value && oldVal && newVal?.id !== oldVal?.id) {
-    if (abortController) {
-      abortController.abort()
-      abortController = null
-    }
-    currentReply.value = null
-    isLoading.value = false
-    isStreaming.value = false
-  }
+watch(activeSession, () => {
   nextTick(() => {
     scrollToBottom(false)
     inputRef.value?.focus()
   })
 })
 
-watch(() => store.persistFailed.value, (v) => {
-  if (v) showError('存储空间不足，部分消息可能无法保存')
+// 生成所属会话被删除时终止请求，避免无意义消耗
+watch(() => !replySessionId.value || store.sessions.some(s => s.id === replySessionId.value), (alive) => {
+  if (!alive && (isLoading.value || isStreaming.value)) {
+    stopGeneration()
+  }
+})
+
+watch(() => store.persistFailCount.value, () => {
+  showError('存储空间不足，部分消息可能无法保存')
 })
 
 onUnmounted(() => {
@@ -481,7 +467,6 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 28px 32px;
-  scroll-behavior: smooth;
 }
 
 .input-bar {
