@@ -6,6 +6,7 @@ chat
 .claude/
 AGENTS.md
 CLAUDE.md
+.qoder
 
 # Build output
 dist/
