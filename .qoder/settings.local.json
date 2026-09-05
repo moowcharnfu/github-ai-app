@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(test -f /Users/moowcharnfu/Desktop/github-ai-app/AGENTS.md && echo \"EXISTS\" || echo \"NOT_FOUND\")",
-      "Bash(npm run test 2>&1 | tail -40)"
-    ]
-  }
-}
