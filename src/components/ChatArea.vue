@@ -159,6 +159,10 @@ async function pickImage() {
   if (!selected) return
 
   try {
+    if (!isSupportedImage(selected)) {
+      showError('仅支持 PNG 或 JPG 图片')
+      return
+    }
     const bytes = await readFile(selected)
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
     if (data.length > MAX_IMAGE_BYTES) {
@@ -173,6 +177,11 @@ async function pickImage() {
   }
 }
 
+function isSupportedImage(pathOrType) {
+  if (!pathOrType) return false
+  return /\.(png|jpe?g)$/i.test(pathOrType) || /^image\/(png|jpeg)$/i.test(pathOrType)
+}
+
 function pickImageBrowser() {
   const input = document.createElement('input')
   input.type = 'file'
@@ -180,6 +189,10 @@ function pickImageBrowser() {
   input.onchange = () => {
     const file = input.files && input.files[0]
     if (!file) return
+    if (!isSupportedImage(file.type)) {
+      showError('仅支持 PNG 或 JPG 图片')
+      return
+    }
     if (file.size > MAX_IMAGE_BYTES) {
       showError('图片过大，请选择 10MB 以内的图片')
       return

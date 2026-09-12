@@ -10,7 +10,6 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
-    "shell:default",
     "dialog:default",
     "http:default",
     {
@@ -23,7 +22,6 @@
     {
       "identifier": "fs:allow-read-file",
       "allow": [
-        { "path": "$HOME/**" },
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
